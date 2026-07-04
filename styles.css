@@ -380,4 +380,14 @@ html:not([data-theme="light"]) .icon-moon { display: none; }
 
 /* Galerie de captures (pages détail projet) */
 .shots { display: grid; gap: 1rem; margin-top: 1rem; }
+.shots:empty { margin-top: 0; }
 .shots img { width: 100%; border-radius: 12px; border: 1px solid var(--line-soft); display: block; }
+
+/* Logos projet (déposés dans assets/<slug>/logo.svg|png|jpg) */
+.proj-head { display: flex; align-items: center; gap: .9rem; }
+.proj-head .page-title { margin: 0; }
+.proj-logo { width: 46px; height: 46px; border-radius: 11px; object-fit: contain; background: var(--surface); border: 1px solid var(--line-soft); padding: 4px; }
+.logo-slot:empty { display: none; }
+/* Logo dans les cartes de la liste projets */
+.card__head { display: flex; align-items: center; gap: .7rem; }
+.card__head .proj-logo { width: 34px; height: 34px; border-radius: 9px; background: var(--surface-2); padding: 3px; flex-shrink: 0; }

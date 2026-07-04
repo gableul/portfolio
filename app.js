@@ -66,6 +66,59 @@
     el.textContent = y + "y " + days + "d " + s.toLocaleString("en-US") + "s";
   }
 
+  /* ---------- Media auto-loader (logos + screenshots) ----------
+     Drop files into assets/<slug>/ and they appear automatically:
+       - logo.svg | logo.png | logo.jpg
+       - screenshots 1.png, 2.png, ... (or .jpg), consecutive. */
+  function probe(url, cb) {
+    var img = new Image();
+    img.onload = function () { cb(true); };
+    img.onerror = function () { cb(false); };
+    img.src = url;
+  }
+  function initMedia() {
+    document.querySelectorAll("[data-logo]").forEach(function (el) {
+      var base = el.getAttribute("data-logo");
+      var exts = ["svg", "png", "jpg"], i = 0;
+      (function tryNext() {
+        if (i >= exts.length) return;
+        var url = base + "/logo." + exts[i++];
+        probe(url, function (ok) {
+          if (ok) {
+            var im = document.createElement("img");
+            im.src = url; im.alt = ""; im.className = "proj-logo";
+            el.appendChild(im); el.classList.add("has-logo");
+          } else { tryNext(); }
+        });
+      })();
+    });
+    document.querySelectorAll("[data-shots]").forEach(function (el) {
+      var base = el.getAttribute("data-shots"), idx = 1, found = 0, MAX = 12;
+      (function step() {
+        if (idx > MAX) return finish();
+        var png = base + "/" + idx + ".png";
+        probe(png, function (ok) {
+          if (ok) { add(png); idx++; step(); }
+          else {
+            var jpg = base + "/" + idx + ".jpg";
+            probe(jpg, function (ok2) {
+              if (ok2) { add(jpg); idx++; step(); } else finish();
+            });
+          }
+        });
+      })();
+      function add(url) {
+        var im = document.createElement("img");
+        im.src = url; im.alt = ""; im.loading = "lazy";
+        el.appendChild(im); found++;
+      }
+      function finish() {
+        var ph = document.querySelector('[data-shots-empty="' + base + '"]');
+        if (ph) ph.style.display = found ? "none" : "";
+      }
+    });
+  }
+
   /* ---------- Light anti-scrape guards ---------- */
   function guards() {
     var block = function (e) { e.preventDefault(); };
@@ -80,6 +133,7 @@
     apply(lang);
     tickAge();
     setInterval(tickAge, 1000);
+    initMedia();
     guards();
   });
 })();
