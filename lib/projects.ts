@@ -114,7 +114,7 @@ export const projects: Project[] = [
     status: "Shipped",
     tags: ["React Native", "Stripe", "API"],
     logo: "assets/tipsyou",
-    visit: null,
+    visit: "https://www.thetipsyou.fr",
     shortKey: "p.tips.desc",
     longKey: "p.tips.long",
     featureKeys: ["tp.f1", "tp.f2", "tp.f3", "tp.f4", "tp.f5", "tp.f6"],
