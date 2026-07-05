@@ -1,17 +1,83 @@
 # Reconstructing Google Solar from scratch in 36h
 
-*Draft — full write-up coming soon.*
+At the BIG Berlin Hack, run by `{Tech: Europe}`, we had 36 hours and a deceptively simple pitch: type in a single street address, and watch an AI design a complete home renewable-energy system for it. Solar panels placed on the real roof. A heat pump sized to the house. A battery. An EV charger. All from the address, and nothing else.
 
-At the BIG Berlin Hack we rebuilt solar-potential estimation for any address in
-36 hours. From a single address, **Iconic** generates a 3D model of a house with
-optimal placement of solar panels, a heat pump, a battery and an EV charger.
+We called it **Iconic**. It won the Reonic track and placed 2nd out of more than 380 teams. This is the story of how we rebuilt the hardest part — Google Solar's roof-potential estimation — from scratch, because we had to.
 
-## The pipeline
+## The problem: seven manual steps, done in seconds
 
-- A from-scratch reconstruction of Google Solar via a 21-variant algorithm
-- Satellite captures (Google + Cesium)
-- GPT Image for building isolation
-- fal.ai for 3D mesh generation
+Reonic installers do seven manual design steps for every quote: draw the roof, place the panels, pick the inverter, size the battery, recommend a heat pump, build the bill of materials, and produce the offer. Manually, that is roughly 25 minutes of expert work per house. Our goal was to compress all seven into a single visible AI sequence — about 22 seconds on screen — grounded in **1,620 real Reonic deliveries** so the numbers weren't hallucinated.
 
-This won the Reonic track and placed 2nd out of 380+ teams. A detailed technical
-breakdown of the 21-variant algorithm and the mesh pipeline is in progress.
+The catch: to place panels you need the roof. Real geometry, real orientation, real obstructions. Google's Solar API gives you exactly that — but only where it has coverage, and we wanted the demo to work for *any* address, not three cherry-picked houses. So we decided to reconstruct the roof, and its solar potential, ourselves.
+
+## Why rebuild Google Solar at all
+
+Google's Solar API returns a beautiful pre-computed roof-segment breakdown: azimuth, pitch, area, annual sunshine per square meter. If it covers your building, you're done. But coverage is patchy outside dense urban cores, and leaning on it entirely would have made the "type any address" promise a lie.
+
+So we treated the Solar API as a *reference we could reproduce* rather than a dependency. Given a raw 3D mesh of a building, everything Google returns is derivable: cluster the mesh into flat roof faces, measure each face's azimuth and tilt from its normal, integrate its area, and model the annual irradiance. That became our offline analysis pipeline.
+
+## The 21-variant roof algorithm
+
+Roof reconstruction from photogrammetry is genuinely hard. A raw aerial mesh is noisy — trees, chimneys, neighboring walls, and reconstruction artifacts all masquerade as roof. A single fixed set of parameters that nails a clean gable roof will fail badly on a hipped roof with dormers, and vice versa.
+
+Our fix was to stop trying to find one perfect parameterization. Instead, `analyze-multi.ts` fans out the same core analyzer across a large family of preset parameter variants — labelled `A` through `V`, more than twenty of them — each a different combination of knobs:
+
+- eaves-buffer strategy and buffer width
+- how aggressively to drop north-facing faces (a tilt threshold)
+- multi-level de-duplication distances (for stacked or overlapping planes)
+- edge offsets, grid resolution, minimum yield-per-panel cutoffs, maximum shaded fraction
+
+Each variant runs as its own child process, writing to a suffixed file like `{house}-analysis-A.json`. Then we *score* every result and keep the winner. The scoring heuristic is deliberately physical rather than clever:
+
+```
+coverage = panelArea / faceArea
+score    = closeness(coverage, 0.40)
+           with hard penalties for coverage > 0.95 (impossible)
+           and coverage < 0.10 (implausibly sparse)
+```
+
+A typical residential install lands around 30–45% roof coverage, so we reward variants whose panel packing lands near 40% and punish the physically impossible ones. It's a search over parameterizations, judged by whether the *outcome* looks like a real install — which turned out to be far more robust than hand-tuning one config at 3am.
+
+The core face analysis is a DBSCAN over the mesh triangle normals: cluster coplanar triangles into faces, compute each face's mean normal, derive azimuth (0° = North, clockwise) and tilt, and integrate area from the triangle sum. Yield is modelled from a German baseline of **1100 kWh/m²/yr**, scaled by how far a face deviates from the optimal 35° tilt and 180° (south) azimuth, using cosine falloffs and SunCalc for sun position. It is not NREL-grade physics — it's a defensible first-order model that reproduces the *shape* of Google Solar's answer, which is exactly what a 36-hour hackathon needs.
+
+## The satellite-to-3D pipeline
+
+For arbitrary custom addresses, we built a live geometry pipeline that stitches together four services. It runs entirely server-side and caches every stage to disk, because several steps are slow and metered:
+
+1. **Aerial capture** — the top-down view is a proxy over Google Static Maps. The oblique, tilted view is the interesting one: we render **Google Photorealistic 3D Tiles through Cesium**, headlessly, in Chromium via Playwright. That gives us a real three-quarter perspective of the building — the angle a 3D reconstructor needs. It takes ~10–15s, so results are cached as PNGs keyed on latitude, longitude, zoom and tilt.
+
+2. **Building isolation** — the oblique screenshot is full of neighbors, streets, and trees. We run **GPT Image 2 in edit mode** (via fal) to cut everything down to just the target building on a clean white background. This is the single most important step: a clean, isolated subject is what makes the next stage produce a usable mesh instead of garbage. It's cached too, because it's ~25s of paid quota per address.
+
+3. **Image-to-3D mesh** — the cleaned image goes to **fal.ai**, where we wired both `fal-ai/trellis-2` and Hunyuan 3D (v3.1 Pro) image-to-3D to generate a GLB mesh. Hunyuan Pro can take 60–120s for a high-face-count mesh, which is why our Cloud Run timeout is set to 600s.
+
+4. **Roof analysis** — the mesh (or, for the three demo houses, an offline Google 3D Tiles photogrammetry capture) feeds the DBSCAN-plus-scoring analyzer above, producing the canonical `analysis.json`: faces, obstructions, module positions, footprint, and per-face yield.
+
+One firm rule from day one: **the raw photogrammetric mesh is never shown to the user.** It's noisy and ugly. It exists only as a data source. What the user sees is a clean, low-poly architectural render — a Norman Foster / Apple Maps aesthetic in react-three-fiber — built to match the building's real proportions, panels dropping onto the actual roof faces, with a subtle turbo-gradient heatmap of per-square-meter yield.
+
+## The rest of the brain
+
+Geometry is only half of it. On top sits the sizing and reasoning layer: a **k-NN engine** over the 1,620 Reonic deliveries (k=5 on z-score-normalized features, median-aggregated to recommend kWp, battery kWh, and price), a **Gemini** agent that narrates the design sequence and streams a customer-facing explanation, a fine-tuned **Pioneer (Fastino)** classifier for component choices, and **Tavily** for live German feed-in tariffs. The whole thing exports a one-page PDF quick-offer behind a human-in-the-loop approval modal.
+
+## Stack
+
+- **Next.js 16** + React 19 (App Router), deployed on Google Cloud Run at `iconic.haus`
+- **react-three-fiber** + drei + postprocessing on top of **three.js**, with zustand and framer-motion
+- **Google Photorealistic 3D Tiles** via **Cesium**, rendered headlessly in **Playwright/Chromium**
+- **fal.ai** — GPT Image 2 (building isolation) and Trellis-2 / Hunyuan 3D (image-to-3D)
+- **Google Static Maps + Geocoding**, **Gemini**, **Pioneer (Fastino)**, **Tavily**
+- Custom TypeScript pipeline: fetch 3D Tiles, analyze roof (DBSCAN), sweep variants, place panels
+
+## What was hard in 36h
+
+The 3D Tiles fetch was the single riskiest task, and we knew it — we gave it a hard 2-hour timebox and a checkpoint with an explicit go/no-go. The fallback was blunt but real: if live photogrammetry didn't converge, open the mesh in Blender, measure the roof by hand, and hardcode the analysis JSON. The brief itself blessed this ("if that's too hard, build something that estimates the space available"), and having that escape hatch written down in advance is what let us take the ambitious path without betting the demo on it.
+
+The other hard part was discipline about the seam between "impressive" and "shippable." We froze the shared `types.ts` contract early so four people could work in parallel without stepping on each other, and every workstream had a documented Plan B — degraded but valid. Nothing in the demo depended on a single fragile thing being perfect.
+
+## Lessons and what I'd do differently
+
+- **Score outcomes, not parameters.** The variant-sweep-plus-scoring approach beat hand-tuning by a mile, because "does this look like a 40%-coverage install" is a far more stable target than any individual knob. I'd reach for that pattern again on any messy geometry problem.
+- **The unglamorous step matters most.** GPT Image 2 isolation isn't the flashy part, but without a clean white-background subject, the 3D mesh is unusable. Spend the time on the input, not the model.
+- **Cache aggressively and early.** Aerial renders, cleaned images, and meshes are all slow and metered. Baking disk caches keyed on coordinates turned a two-minute cold path into an instant demo — worth doing on hour one, not hour thirty.
+- **Reproduce, don't depend.** Treating Google Solar as a reference to rebuild rather than an API to call is what made "any address" true. It was more work, but it was the whole differentiator.
+
+Type an address, get a designed renewable system in seconds, grounded in 1,620 real deliveries. In 36 hours, that was enough for second place — and a genuinely fun problem to have solved from scratch.

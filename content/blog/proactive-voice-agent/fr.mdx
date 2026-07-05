@@ -1,18 +1,79 @@
 # Un agent vocal proactif pour le suivi médical
 
-*Brouillon — article complet à venir.*
+Au hackathon Alan x Mistral AI, mon équipe et moi avons construit **Maude** — un agent vocal IA qui vit à l'intérieur de l'application d'assurance santé Alan et qui *rappelle les membres* après un événement médical. Pas un chatbot que l'on ouvre quand on a un problème, mais un agent qui décroche le premier. Nous avons remporté le **track ElevenLabs**, et le prix était un abonnement ElevenLabs Scale de six mois, d'une valeur d'environ 3 500 dollars. Voici l'histoire honnête de sa construction, de son architecture, et de ce qui a cassé en chemin.
 
-Construit au hackathon Alan × Mistral AI, **Maude** est un agent vocal IA intégré
-à l'app Alan qui appelle proactivement les membres après une consultation pour un
-suivi médical personnalisé.
+## Le problème : personne ne vous rappelle
 
-## Orchestration
+Le constat est banal et universel. Un patient sort du cabinet du médecin et, dix minutes plus tard, a oublié la moitié de ce qui a été dit. Personne ne vérifie s'il prend bien son traitement, s'il a pris son rendez-vous de suivi, ou si une complication s'installe discrètement. Alan automatise déjà plus de 100 000 conversations chat avec une satisfaction de 4,5 sur 5, et leur priorité annoncée est le support par téléphone. Maude est un prototype exactement de cela : l'extension vocale et proactive de Mo, l'assistant intégré à l'app Alan.
 
-- Multilingue (FR / EN)
-- Mistral (Voxtral + Small 4) pour la compréhension et la génération
-- ElevenLabs pour une voix naturelle
-- LiveKit pour le streaming temps réel à faible latence
-- Alimenté par les données wearable Thryve
+Le cadrage qui comptait le plus pour nous était **proactif vs réactif**. Un agent réactif attend qu'on le sollicite ; la charge de repérer un problème repose sur le patient. Un agent proactif inverse cela — il initie, il se souvient du contexte d'une chirurgie ou d'une consultation précise, et il ouvre par une question concrète plutôt qu'un générique « comment puis-je vous aider ? ». Dans la démo, Maude appelle Sophie au sujet de son arthroscopie du genou droit du 26 mars, par son prénom, en mentionnant son chirurgien et la date. Cette seule inversion change toute la texture émotionnelle du produit.
 
-Vainqueur du track ElevenLabs. Un décryptage du budget de latence et du flux de
-données respectueux du RGPD arrive bientôt.
+## L'orchestration : trois fournisseurs d'IA, une seule conversation
+
+Sous le capot, Maude ce sont deux éléments déployés séparément qui se rejoignent au milieu via LiveKit Cloud : un frontend Next.js sur Vercel et un agent Python hébergé sur LiveKit. La partie intéressante est la pipeline vocale, qui assemble trois fournisseurs d'IA distincts en une seule boucle temps réel.
+
+```
+vous parlez → audio WebRTC → LiveKit Cloud
+   → Voxtral STT (transcription en streaming)
+   → Silero VAD + détecteur de tour multilingue (le tour est-il fini ?)
+   → Mistral Small (raisonnement + function calling)
+        - get_reimbursement_info()   -> recherche web Linkup
+        - get_wearable_data()        -> API Thryve
+        - find_nearby_provider()     -> Linkup
+        - flag_alert() / schedule_followup()
+   → ElevenLabs TTS (Flash v2.5)
+   → audio WebRTC → vous entendez Maude
+```
+
+**Mistral pense et écoute.** Nous utilisons Voxtral (`voxtral-mini-transcribe-realtime-2602`) pour la transcription en streaming — un modèle de 4B avec une latence sous les 500 ms — et Mistral Small (`mistral-small-latest`) comme cerveau du raisonnement, en s'appuyant sur son function calling natif pour décider quand chercher un taux de remboursement, récupérer des données wearable, ou lever une alerte. **ElevenLabs donne sa voix à Maude**, en Flash v2.5 pour le temps de premier octet le plus faible possible. **LiveKit transporte tout** — l'audio WebRTC dans les deux sens, plus des text streams qui renvoient du JSON structuré vers le navigateur pendant l'appel.
+
+La belle surprise ici, c'est le peu de code de liaison que la boucle de conversation demande. L'`AgentSession` du framework LiveKit Agents câble ensemble STT, VAD, détection de tour, LLM et TTS ; une fois configuré, le flux audio bidirectionnel est quasiment gratuit. Presque tout notre vrai code vit dans les *bords* — les function tools, le prompt du playbook, et le résumé post-appel.
+
+## Le budget de latence
+
+Une conversation naturelle a un budget de latence brutal. Si l'écart entre la fin de la phrase d'une personne et la réponse de l'agent dépasse environ une seconde, l'illusion d'une personne s'effondre et on sent la machine. Chaque étage de la pipeline grignote ce budget, alors nous l'avons traité comme un total courant à défendre :
+
+```
+fin de parole -> Silero VAD confirme le silence
+             -> le détecteur de tour dit « à vous »
+             -> premier token de Mistral Small
+             -> premier octet ElevenLabs Flash v2.5 (~75ms)
+             -> l'audio atteint l'oreille
+```
+
+Trois choix découlent directement de cette contrainte. Nous avons pris **Voxtral realtime** en streaming plutôt qu'une transcription par lots, pour que le texte coule pendant que vous parlez encore. Nous avons pris **ElevenLabs Flash v2.5** précisément pour son très faible temps de premier octet, au détriment de modèles plus fidèles mais plus lents. Et nous avons fait tourner un **détecteur de tour multilingue** aux côtés de Silero VAD, pour que l'agent sache quand un tour est réellement terminé, au lieu de couper la parole sur une pause. Nous avons aussi désactivé les interruptions pour la démo — un échange délibéré de naturel contre robustesse, parce que le barge-in dans une salle de hackathon bruyante faisait que l'agent se coupait lui-même.
+
+## Données médicales et RGPD
+
+La voix combinée aux données de santé est à peu près la combinaison la plus sensible qui soit, et nous ne l'avons pas feint. Deux principes ont façonné la conception. D'abord, **l'agent ne diagnostique jamais et ne prescrit jamais** — le playbook en fait une règle absolue, et toute inquiétude clinique est renvoyée vers un vrai médecin via la Clinique Alan plutôt que traitée directement. Ensuite, nous avons gardé la **surface de données volontairement petite** : pas de base de données, pas d'enregistrement d'appel, pas d'authentification, trois profils patients synthétiques dans un fichier JSON. Tout ce qui sort de l'agent est un objet `CallSummary` structuré, streamé vers le tableau de bord de l'équipe soignante, si bien que l'information conservée par le système est bornée et inspectable plutôt qu'un transcript flottant. Pour un vrai déploiement, il faudrait de véritables flux de consentement, du chiffrement au repos et des garanties de résidence des données — mais l'objectif était de prouver la forme d'un système défendable côté RGPD, pas de balayer la question.
+
+## Multilingue, dès le premier octet
+
+Maude est bilingue français et anglais, et la langue est choisie avant même que l'appel ne se connecte — le frontend passe un attribut `language` à côté de l'identifiant patient, et l'agent le lit pour construire le bon message d'accueil, le bon prompt et la bonne configuration de voix. Voxtral et le détecteur de tour multilingue gèrent tous deux le FR et l'EN, et ElevenLabs Flash v2.5 couvre 32 langues dont le français, donc la même pipeline sert les deux sans changer de composant. C'est un petit détail, mais un juge de hackathon à Paris qui bascule en français et entend Maude répondre naturellement vaut plus que n'importe quelle slide.
+
+## Signaux wearable avec Thryve
+
+Le contexte de santé est ce qui rend le suivi personnel plutôt que scénarisé. Nous avons tiré les données wearable via **Thryve**, qui agrège fréquence cardiaque, sommeil et activité depuis des appareils comme Fitbit, Apple Watch et Garmin. Dans le scénario de Sophie, cela remonte sous forme d'une fréquence cardiaque au repos élevée (78 contre une base de 65), d'un sommeil en baisse et d'un faible nombre de pas — des signaux que l'agent peut glisser dans la conversation (« j'ai remarqué que vous marchiez beaucoup moins que d'habitude ») et corréler au contexte clinique d'une chirurgie récente. Comme le mapping des utilisateurs sandbox était inconnu jusqu'à notre arrivée, nous avons livré des données de repli codées en dur pour les trois patients, ce qui s'est avéré judicieux.
+
+## Ce qui a cassé
+
+Beaucoup de choses. Le **cold start** était notre plus gros risque en direct : LiveKit démarre l'agent à la demande, et les 10 à 20 premières secondes de silence après « Start Call » semblaient une éternité — nous l'avons masqué avec une animation de chargement et un appel de préchauffage juste avant le jury. Les intégrations **Thryve** et **Linkup** ont toutes deux nécessité des replis mockés, car ni les données de remboursement structurées ni le mapping wearable sandbox n'étaient garantis de revenir proprement sous pression. Et plusieurs paquets étaient tout frais : `mistralai` 2.3.2 était sorti le matin même de notre audit de stack, avec trois releases en une semaine, alors nous avons épinglé les versions par prudence pour éviter qu'une intégration n'explose en pleine démo.
+
+## La victoire sur le track ElevenLabs
+
+Nous avons remporté le **track ElevenLabs**, et l'abonnement Scale de six mois (environ 3 500 dollars) était le prix. La voix a vraiment été ce qui a fait atterrir le produit — un appel de suivi ne fonctionne que s'il sonne comme une personne qui se soucie de vous, et c'est la vitesse plus la qualité de Flash v2.5 qui a permis à Maude de paraître chaleureuse plutôt que robotique. Cela a validé le pari au cœur de tout le projet : le difficile dans un agent médical proactif n'est pas le raisonnement, c'est de faire arriver ce raisonnement sous forme d'une voix humaine naturelle, assez vite pour paraître vivante.
+
+## Stack
+
+- **Reconnaissance vocale :** Mistral Voxtral (`voxtral-mini-transcribe-realtime-2602`), streaming, sous 500 ms
+- **Raisonnement :** Mistral Small (`mistral-small-latest`) avec function calling natif
+- **Synthèse vocale :** ElevenLabs Flash v2.5 (temps de premier octet très faible, 32 langues)
+- **Gestion des tours :** Silero VAD plus un détecteur de tour multilingue
+- **Transport temps réel :** LiveKit Cloud — audio WebRTC plus text streams JSON
+- **Tools et données :** Linkup (remboursement et recherche de praticiens), Thryve (wearables)
+- **Frontend :** Next.js 15.5, React 19, Tailwind 4 sur Vercel
+- **Agent :** Python, framework LiveKit Agents, hébergé sur LiveKit Cloud
+
+## Leçons, et ce que je changerais
+
+La plus grande leçon, c'est qu'**orchestrer plusieurs fournisseurs d'IA est avant tout un problème de gestion de la latence**. Chaque fournisseur est excellent isolément ; l'art est dans les coutures, à défendre un budget d'une seconde à travers quatre sauts réseau. Avec plus de temps, je m'attaquerais au cold start pour de vrai avec un pool d'agents chauds plutôt qu'un spinner, je réactiverais les interruptions avec une meilleure gestion de l'écho et du barge-in, et je construirais la vraie couche de consentement et de chiffrement qu'exige un produit médical en production. J'investirais aussi davantage dans le playbook — le passage que nous avons esquissé, d'un script rigide en sept étapes vers un ton plus chaleureux, « comme si votre mère vous appelait pour prendre de vos nouvelles », a finalement compté autant que n'importe quel choix de modèle. La technologie rend l'appel possible ; l'écriture le rend digne d'être décroché.

@@ -10,13 +10,14 @@ interface Post {
   titleKey: MessageKey;
   descKey: MessageKey;
   date: string;
+  tag: string;
   delay: string;
 }
 
 const POSTS: Post[] = [
-  { slug: "reconstructing-google-solar", titleKey: "b.solar.title", descKey: "b.solar.desc", date: "2025", delay: "d3" },
-  { slug: "proactive-voice-agent", titleKey: "b.voice.title", descKey: "b.voice.desc", date: "2025", delay: "d4" },
-  { slug: "optimizing-safe-pi-planning", titleKey: "b.safe.title", descKey: "b.safe.desc", date: "2025", delay: "d5" },
+  { slug: "reconstructing-google-solar", titleKey: "b.solar.title", descKey: "b.solar.desc", date: "2025", tag: "BIG Berlin · 36h", delay: "d3" },
+  { slug: "proactive-voice-agent", titleKey: "b.voice.title", descKey: "b.voice.desc", date: "2025", tag: "Alan × Mistral", delay: "d4" },
+  { slug: "optimizing-safe-pi-planning", titleKey: "b.safe.title", descKey: "b.safe.desc", date: "2025", tag: "Master's thesis", delay: "d5" },
 ];
 
 export default function BlogPage() {
