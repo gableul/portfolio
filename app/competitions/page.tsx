@@ -1,76 +1,43 @@
-"use client";
+import type { Metadata } from "next";
+import { CompetitionsList, type Competition } from "@/components/competitions-list";
+import { readProjectAssets } from "@/lib/assets";
 
-import { BackLink } from "@/components/back-link";
-import { T } from "@/components/language";
-import type { MessageKey } from "@/lib/i18n";
+export const metadata: Metadata = { title: "Competitions" };
 
-interface Competition {
-  name: string;
-  eventKey: MessageKey;
-  resultKey: MessageKey;
-  descKey: MessageKey;
-  tags: string[];
-  delay: string;
-}
-
-const COMPETITIONS: Competition[] = [
+const competitions: Competition[] = [
   {
+    slug: "fixit",
     name: "FixIT",
+    logo: "assets/competitions/fixit",
     eventKey: "c.paris.event",
     resultKey: "c.paris.result",
     descKey: "c.paris.desc",
     tags: ["Computer Vision", "fal.ai", "Seedance", "Tavily", "Video"],
-    delay: "d3",
   },
   {
+    slug: "iconic",
     name: "Iconic",
+    logo: "assets/competitions/iconic",
     eventKey: "c.berlin.event",
     resultKey: "c.berlin.result",
     descKey: "c.berlin.desc",
     tags: ["3D", "Geospatial", "GPT Image", "fal.ai", "Cesium"],
-    delay: "d4",
   },
   {
+    slug: "maude",
     name: "Maude",
+    logo: "assets/competitions/maude",
     eventKey: "c.alan.event",
     resultKey: "c.alan.result",
     descKey: "c.alan.desc",
     tags: ["Voice AI", "Mistral", "ElevenLabs", "LiveKit", "Python"],
-    delay: "d5",
   },
 ];
 
 export default function CompetitionsPage() {
-  return (
-    <div className="wrap">
-      <BackLink href="/" label="back.home" />
-
-      <h1 className="page-title reveal d1">
-        <T k="competitions.title" />
-      </h1>
-      <p className="page-sub reveal d2">
-        <T k="competitions.sub" />
-      </p>
-
-      <div className="timeline">
-        {COMPETITIONS.map((c) => (
-          <article className={`entry reveal ${c.delay}`} key={c.name}>
-            <div className="card">
-              <h3 className="card__title">{c.name}</h3>
-              <p className="card__meta"><T k={c.eventKey} /></p>
-              <p className="card__meta">
-                <span className="result"><T k={c.resultKey} /></span>
-              </p>
-              <p className="card__desc"><T k={c.descKey} /></p>
-              <div className="tags">
-                {c.tags.map((tag) => (
-                  <span className="tag" key={tag}>{tag}</span>
-                ))}
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </div>
-  );
+  const logos: Record<string, string | null> = {};
+  for (const c of competitions) {
+    logos[c.slug] = readProjectAssets(c.logo).logo;
+  }
+  return <CompetitionsList competitions={competitions} logos={logos} />;
 }
