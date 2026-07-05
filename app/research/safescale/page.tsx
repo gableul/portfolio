@@ -47,7 +47,12 @@ export default function SafescalePage() {
         <p className="card__meta">{t("r.safe.keywords")}</p>
 
         <div className="actions">
-          <a href="#" rel="noopener">Whitepaper</a>
+          <a href="/papers/safescale-fr.pdf" target="_blank" rel="noopener">
+            {t("r.safe.paper.fr")}
+          </a>
+          <a href="/papers/safescale-en.pdf" target="_blank" rel="noopener">
+            {t("r.safe.paper.en")}
+          </a>
           <a href="#" rel="noopener">GitHub</a>
         </div>
       </div>

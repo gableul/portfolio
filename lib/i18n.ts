@@ -154,7 +154,24 @@ export const dict = {
     "b.voice.desc": "Orchestrating Mistral, ElevenLabs and LiveKit into a low-latency, GDPR-aware multilingual voice agent.",
     "b.safe.title": "Optimizing SAFe PI Planning with NSGA-II",
     "b.safe.desc": "Turning a room full of sticky notes into a six-objective optimization problem with a human in the loop.",
-    "b.draft": "Draft"
+    "b.draft": "Draft",
+    "back.work": "Back to work",
+    "work.detail.overview": "Overview",
+    "work.detail.responsibilities": "Responsibilities",
+    "work.humanx.overview": "HumanX is a startup I co-founded. I build the product end-to-end - from the first line of TypeScript to brand and go-to-market - and ship automation-heavy tools for small businesses (TipsYou, Get5Stars and more), published under HumanX SAS.",
+    "work.humanx.b1": "Co-founded the company and set product direction",
+    "work.humanx.b2": "Built full-stack products in TypeScript (web + mobile)",
+    "work.humanx.b3": "Designed automation pipelines and integrations (Stripe, Shopify, email)",
+    "work.humanx.b4": "Owned brand, design system and go-to-market",
+    "work.humanx.b5": "Shipped and published apps under HumanX SAS",
+    "work.thales.overview": "At Thales I lead complex data projects - translating messy operational needs into automation, decision-support dashboards and reliable data solutions.",
+    "work.thales.b1": "Turn operational needs into concrete data solutions",
+    "work.thales.b2": "Build decision-support dashboards (Power BI / DAX)",
+    "work.thales.b3": "Model and query data (SQL, Power Query / M)",
+    "work.thales.b4": "Automate reporting and data workflows",
+    "work.thales.b5": "Coordinate stakeholders across teams",
+    "r.safe.paper.fr": "Paper (FR)",
+    "r.safe.paper.en": "Paper (EN)"
   },
   "fr": {
     "home.name": "Gabriel Leulmi",
@@ -306,7 +323,24 @@ export const dict = {
     "b.voice.desc": "Orchestrer Mistral, ElevenLabs et LiveKit en un agent vocal multilingue à faible latence et respectueux du RGPD.",
     "b.safe.title": "Optimiser le SAFe PI Planning avec NSGA-II",
     "b.safe.desc": "Transformer une salle pleine de post-its en un problème d'optimisation à six objectifs, avec un humain dans la boucle.",
-    "b.draft": "Brouillon"
+    "b.draft": "Brouillon",
+    "back.work": "Retour à l'expérience",
+    "work.detail.overview": "Aperçu",
+    "work.detail.responsibilities": "Responsabilités",
+    "work.humanx.overview": "HumanX est une startup que j'ai co-fondée. Je construis le produit de bout en bout - de la première ligne de TypeScript à la marque et la mise sur le marché - et je livre des outils très automatisés pour les petites entreprises (TipsYou, Get5Stars et d'autres), édités sous HumanX SAS.",
+    "work.humanx.b1": "Co-fondation de l'entreprise et direction produit",
+    "work.humanx.b2": "Produits full-stack en TypeScript (web + mobile)",
+    "work.humanx.b3": "Pipelines d'automatisation et intégrations (Stripe, Shopify, e-mail)",
+    "work.humanx.b4": "Marque, design system et go-to-market",
+    "work.humanx.b5": "Applications livrées et éditées sous HumanX SAS",
+    "work.thales.overview": "Chez Thales, je pilote des projets data complexes - je traduis des besoins opérationnels flous en automatisations, tableaux de bord décisionnels et solutions data fiables.",
+    "work.thales.b1": "Traduire les besoins opérationnels en solutions data concrètes",
+    "work.thales.b2": "Construire des tableaux de bord décisionnels (Power BI / DAX)",
+    "work.thales.b3": "Modéliser et interroger les données (SQL, Power Query / M)",
+    "work.thales.b4": "Automatiser le reporting et les flux de données",
+    "work.thales.b5": "Coordonner les parties prenantes entre les équipes",
+    "r.safe.paper.fr": "Papier (FR)",
+    "r.safe.paper.en": "Papier (EN)"
   }
 } as const;
 
