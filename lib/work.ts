@@ -23,8 +23,11 @@ export const jobs: Job[] = [
     locKey: "work.humanx.loc",
     roleKey: "work.humanx.role",
     overviewKey: "work.humanx.overview",
-    bulletKeys: ["work.humanx.b1", "work.humanx.b2", "work.humanx.b3", "work.humanx.b4", "work.humanx.b5"],
-    tags: ["Product", "Full-stack", "TypeScript", "Automation", "Brand"],
+    bulletKeys: [
+      "work.humanx.b1", "work.humanx.b2", "work.humanx.b3", "work.humanx.b4",
+      "work.humanx.b5", "work.humanx.b6", "work.humanx.b7",
+    ],
+    tags: ["Product", "Full-stack", "TypeScript", "DevOps", "Security", "Automation", "Brand", "Investors"],
   },
   {
     slug: "thales",
@@ -35,8 +38,11 @@ export const jobs: Job[] = [
     locKey: "work.thales.loc",
     roleKey: "work.thales.role",
     overviewKey: "work.thales.overview",
-    bulletKeys: ["work.thales.b1", "work.thales.b2", "work.thales.b3", "work.thales.b4", "work.thales.b5"],
-    tags: ["Data", "SQL", "Dashboards", "DAX", "Automation"],
+    bulletKeys: [
+      "work.thales.b1", "work.thales.b2", "work.thales.b3", "work.thales.b4",
+      "work.thales.b5", "work.thales.b6", "work.thales.b7",
+    ],
+    tags: ["Data", "SQL", "Power BI", "DAX", "Power Query", "Automation", "Jira", "Confluence", "Artifactory", "SAFe", "Kanban", "Mentoring"],
   },
 ];
 
