@@ -1,0 +1,84 @@
+## Reconstruire Google Solar from scratch en 36h
+
+Au BIG Berlin Hack, organisé par `{Tech: Europe}`, nous avions 36 heures et un pitch trompeusement simple : saisir une seule adresse postale et regarder une IA concevoir un système complet d'énergie renouvelable pour cette maison. Des panneaux solaires placés sur le vrai toit. Une pompe à chaleur dimensionnée à la maison. Une batterie. Une borne de recharge. À partir de l'adresse, et de rien d'autre.
+
+Nous l'avons appelé **Iconic**. Il a remporté le track Reonic et terminé 2e sur plus de 380 équipes. Voici comment nous avons reconstruit la partie la plus dure — l'estimation du potentiel solaire de toiture de Google Solar — from scratch, en la concevant pour fonctionner sur n'importe quel bâtiment que nous lui donnons.
+
+## Le problème : sept étapes manuelles, faites en quelques secondes
+
+Les installateurs de Reonic réalisent sept étapes de conception manuelles pour chaque devis : dessiner le toit, placer les panneaux, choisir l'onduleur, dimensionner la batterie, recommander une pompe à chaleur, construire la nomenclature (BOM) et produire l'offre. Manuellement, cela représente environ 25 minutes de travail d'expert par maison. Notre objectif était de compresser ces sept étapes en une seule séquence IA visible — environ 22 secondes à l'écran — ancrée dans **1 620 livraisons Reonic réelles** pour que chaque chiffre remonte à une installation réelle.
+
+Le hic : pour placer des panneaux, il faut le toit. Géométrie réelle, orientation réelle, obstructions réelles. L'API Solar de Google donne exactement cela — mais seulement là où elle a de la couverture, et un produit qui ne fonctionne que dans quelques quartiers bien cartographiés n'est pas un produit. Nous voulions qu'Iconic conçoive un système pour *n'importe quelle* adresse qu'un client saisirait, alors nous avons construit notre propre reconstruction toit-et-potentiel qui tourne de la même façon partout.
+
+## Pourquoi reconstruire Google Solar
+
+L'API Solar de Google renvoie un magnifique découpage pré-calculé des segments de toiture : azimut, pente, surface, ensoleillement annuel par mètre carré. Là où elle couvre un bâtiment, elle est excellente. Mais la couverture est lacunaire hors des centres urbains denses, et bâtir un outil commercial sur une dépendance qui, silencieusement, n'a aucune réponse pour une partie de votre marché adressable est un risque que nous ne voulions pas livrer.
+
+Nous avons donc traité l'API Solar comme une *référence à reproduire* plutôt que comme une dépendance. À partir d'un mesh 3D brut d'un bâtiment, tout ce que Google renvoie est dérivable : regrouper le mesh en faces de toit planes, mesurer l'azimut et l'inclinaison de chaque face depuis sa normale, intégrer sa surface et modéliser l'irradiance annuelle. C'est devenu notre propre moteur d'analyse — un moteur qui répond pour chaque adresse, pas seulement pour celles qui sont cartographiées.
+
+## L'algorithme de toiture à 21 variantes
+
+La reconstruction de toiture à partir de photogrammétrie est réellement difficile, et cette difficulté est inhérente à l'entrée, pas à l'effort. Un mesh aérien brut est bruité — arbres, cheminées, murs voisins et artefacts de reconstruction se font tous passer pour du toit. Un unique jeu de paramètres fixe qui réussit parfaitement un toit à deux pans échouera lamentablement sur un toit en croupe avec lucarnes, et vice versa. Le monde réel couvre les deux ; un analyseur mono-configuration serait donc fragile précisément là où un outil de production ne peut pas se le permettre.
+
+Plutôt que de courir après une paramétrisation parfaite, nous avons conçu l'analyseur comme un ensemble délibéré. `analyze-multi.ts` déploie le même analyseur central sur une large famille de variantes de paramètres préconfigurées — étiquetées de `A` à `V`, plus d'une vingtaine — chacune combinant différemment les réglages :
+
+- stratégie de marge de débord de toit et largeur de cette marge
+- agressivité de l'élimination des faces orientées nord (un seuil d'inclinaison)
+- distances de dé-duplication multi-niveaux (pour les plans empilés ou qui se chevauchent)
+- décalages de bord, résolution de grille, seuils minimaux de rendement par panneau, fraction ombragée maximale
+
+Chaque variante s'exécute dans son propre processus enfant, écrivant dans un fichier suffixé du type `{house}-analysis-A.json`. Ensuite, nous *scorons* chaque résultat et gardons le gagnant. L'heuristique de score est délibérément physique :
+
+```
+coverage = panelArea / faceArea
+score    = proximité(coverage, 0.40)
+           avec pénalités fortes si coverage > 0.95 (impossible)
+           et si coverage < 0.10 (invraisemblablement clairsemé)
+```
+
+Une installation résidentielle typique se situe autour de 30 à 45 % de couverture de toit ; nous récompensons donc les variantes dont le calepinage des panneaux tombe près de 40 % et rejetons d'emblée celles qui sont physiquement impossibles. C'est une recherche sur des paramétrisations jugée sur le fait que le *résultat* ressemble à une vraie installation — une conception auto-validante qui généralise à travers les formes de toit au lieu de sur-apprendre une seule. Cette robustesse est exactement la propriété recherchée lorsque la prochaine adresse est une que l'on n'a jamais vue.
+
+L'analyse de face centrale est un DBSCAN sur les normales des triangles du mesh : regrouper les triangles coplanaires en faces, calculer la normale moyenne de chaque face, en déduire l'azimut (0° = Nord, dans le sens horaire) et l'inclinaison, et intégrer la surface depuis la somme des triangles. Le rendement est modélisé à partir d'une base allemande de **1100 kWh/m²/an**, pondérée selon l'écart d'une face par rapport à l'inclinaison optimale de 35° et à l'azimut optimal de 180° (sud), via des décroissances en cosinus et SunCalc pour la position du soleil. C'est un modèle de premier ordre transparent et auditable qui reproduit la *forme* de la réponse de Google Solar — et comme chaque constante est explicite, il est simple de le faire évoluer vers un modèle d'irradiance de niveau PVGIS ou NREL à mesure que le produit mûrit.
+
+## Le pipeline satellite vers 3D
+
+Pour concevoir pour une adresse arbitraire, nous avons construit un pipeline de géométrie en direct qui assemble quatre services. Il tourne entièrement côté serveur et met en cache chaque étape sur disque — une stratégie délibérée de coût et de latence, car plusieurs étapes sont lentes et facturées :
+
+1. **Capture aérienne** — la vue de dessus est un proxy vers Google Static Maps. La vue oblique et inclinée est la plus intéressante : nous rendons les **Google Photorealistic 3D Tiles via Cesium**, en headless, dans Chromium grâce à Playwright. Cela nous donne une vraie perspective aux trois-quarts du bâtiment — l'angle dont un reconstructeur 3D a besoin. Cela prend ~10 à 15 s, donc les résultats sont mis en cache en PNG indexés sur latitude, longitude, zoom et inclinaison.
+
+2. **Isolation du bâtiment** — la capture oblique est pleine de voisins, de rues et d'arbres. Nous lançons **GPT Image 2 en mode édition** (via fal) pour tout réduire au seul bâtiment cible sur un fond blanc propre. C'est l'étape la plus importante de la chaîne : un sujet propre et isolé est ce qui permet à l'étape suivante de produire un mesh utilisable plutôt que du bruit. Elle est aussi mise en cache, car c'est ~25 s de quota payant par adresse.
+
+3. **Image vers mesh 3D** — l'image nettoyée part vers **fal.ai**, où nous avons câblé à la fois `fal-ai/trellis-2` et Hunyuan 3D (v3.1 Pro) en image-to-3D pour générer un mesh GLB. Hunyuan Pro peut prendre 60 à 120 s pour un mesh à grand nombre de faces, ce qui explique pourquoi notre timeout Cloud Run est réglé à 600 s.
+
+4. **Analyse du toit** — le mesh alimente l'analyseur DBSCAN-plus-scoring décrit ci-dessus, produisant le `analysis.json` canonique : faces, obstructions, positions des modules, emprise au sol et rendement par face. Pour les maisons de démo, nous exécutons cela offline et mettons le résultat en cache — le même pipeline, précalculé — pour que le chemin sur scène soit instantané tandis que le chemin en direct traite tout ce qui est nouveau.
+
+Une décision de conception délibérée dès le premier jour : **le mesh photogrammétrique brut n'est jamais montré à l'utilisateur.** Il est bruité par nature et ne se lit pas comme un artefact digne de confiance. Il n'existe qu'en tant que source de données. Ce que l'utilisateur voit est un rendu architectural propre et low-poly — une esthétique Norman Foster / Apple Maps en react-three-fiber — construit pour correspondre aux vraies proportions du bâtiment, avec les panneaux se posant sur les vraies faces du toit et une carte de chaleur subtile en dégradé turbo du rendement au mètre carré. Présenter un rendu conçu adossé à une géométrie réelle est à la fois une meilleure UX et une représentation plus honnête de ce que nous avons réellement calculé.
+
+## Le reste du cerveau
+
+La géométrie n'en est que la moitié. Par-dessus se trouve la couche de dimensionnement et de raisonnement : un **moteur k-NN** sur les 1 620 livraisons Reonic (k=5 sur des variables normalisées en z-score, agrégées à la médiane pour recommander les kWc, les kWh de batterie et le prix), un agent **Gemini** qui narre la séquence de conception et streame une explication destinée au client, un classifieur **Pioneer (Fastino)** fine-tuné pour le choix des composants, et **Tavily** pour les tarifs de rachat allemands en direct. Le tout exporte une offre rapide au format PDF d'une page derrière une modale de validation avec humain dans la boucle.
+
+## Stack
+
+- **Next.js 16** + React 19 (App Router), déployé sur Google Cloud Run à `iconic.haus`
+- **react-three-fiber** + drei + postprocessing au-dessus de **three.js**, avec zustand et framer-motion
+- **Google Photorealistic 3D Tiles** via **Cesium**, rendus en headless dans **Playwright/Chromium**
+- **fal.ai** — GPT Image 2 (isolation du bâtiment) et Trellis-2 / Hunyuan 3D (image vers 3D)
+- **Google Static Maps + Geocoding**, **Gemini**, **Pioneer (Fastino)**, **Tavily**
+- Pipeline TypeScript maison : récupérer les 3D Tiles, analyser le toit (DBSCAN), balayer les variantes, placer les panneaux
+
+## Vers la production
+
+Nous avons construit Iconic pour la démo, mais nous l'avons architecturé pour les questions que pose un déploiement réel. Voici comment la conception y répond déjà.
+
+- **Appels externes lents et facturés.** Les rendus aériens, les éditions GPT Image 2 et les meshes Hunyuan représentent chacun de quelques secondes à quelques minutes de quota payant. Chaque étape est mise en cache sur disque, indexée sur les coordonnées, de sorte que toute adresse est calculée une fois puis servie instantanément pour toujours. Précalculer les maisons de démo est le même mécanisme appliqué à l'avance — la suite naturelle est un worker de pipeline « chaud » qui précalcule la géométrie des régions populaires et met les requêtes en direct en file derrière un flux de statut.
+
+- **Qualité de mesh variable.** La sortie image-to-3D dépend de la vue d'entrée, donc l'analyseur traite la qualité du mesh comme une préoccupation de premier plan plutôt qu'une hypothèse. Le balayage à 21 variantes avec scoring de plausibilité est lui-même la couche de validation — les reconstructions invraisemblables sont éliminées par le score — et nous conservons un chemin de repli en couches (emprises de bâtiment cadastrales LOD2, puis une estimation pilotée par l'emprise au sol) pour qu'une requête produise toujours une conception défendable au lieu d'échouer.
+
+- **Un chemin d'ingestion robuste.** Les captures offline pour les maisons de démo et la reconstruction en direct pour les nouvelles adresses ne sont pas deux systèmes — c'est un seul chemin d'ingestion avec un cache devant. Cela signifie que la mise en production est un problème de scaling et de préchauffage, pas une réécriture : le même contrat `analysis.json` alimente le moteur de dimensionnement et la scène 3D, qu'il vienne du cache ou d'une exécution Cesium-vers-Hunyuan en direct.
+
+- **Développement parallèle piloté par contrat.** Nous avons gelé tôt le contrat partagé `types.ts` pour que quatre chantiers avancent indépendamment, et chaque étape communique via des artefacts JSON stables. Ce découplage est ce qui a permis au pipeline de s'assembler proprement en 36 heures, et c'est la même couture le long de laquelle on remplacerait plus tard un meilleur modèle d'irradiance ou un autre fournisseur de mesh sans toucher au reste.
+
+- **Sortie ancrée et auditable.** Le dimensionnement est un k-NN sur 1 620 livraisons réelles et le modèle de rendement est entièrement explicite, donc chaque recommandation est traçable plutôt qu'une boîte noire — exactement ce dont un installateur a besoin pour faire confiance avant de signer une offre.
+
+Tapez une adresse, obtenez un système renouvelable conçu en quelques secondes, ancré dans 1 620 livraisons réelles — reconstruit from scratch, et bâti pour passer à l'échelle bien au-delà des trois maisons présentées sur scène.

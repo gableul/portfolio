@@ -2,6 +2,7 @@
 
 import { BackLink } from "@/components/back-link";
 import { T, useLang } from "@/components/language";
+import { CompetitionArticle } from "@/components/competition-article";
 import type { Competition } from "@/lib/competitions";
 
 export function CompetitionDetail({
@@ -59,6 +60,8 @@ export function CompetitionDetail({
           ))}
         </ul>
       </div>
+
+      <CompetitionArticle slug={competition.slug} />
     </div>
   );
 }
