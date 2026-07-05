@@ -1,18 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { T } from "@/components/language";
-import type { MessageKey } from "@/lib/i18n";
-
-export interface Competition {
-  slug: string;
-  name: string;
-  logo: string; // directory under /public
-  eventKey: MessageKey;
-  resultKey: MessageKey;
-  descKey: MessageKey;
-  tags: string[];
-}
+import type { Competition } from "@/lib/competitions";
 
 const DELAYS = ["d3", "d4", "d5"];
 
@@ -37,7 +28,7 @@ export function CompetitionsList({
       <div className="timeline">
         {competitions.map((c, i) => (
           <article className={`entry reveal ${DELAYS[i] ?? ""}`} key={c.slug}>
-            <div className="card">
+            <Link className="card" href={`/competitions/${c.slug}`}>
               <div className="card__head">
                 {logos[c.slug] && (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -55,7 +46,7 @@ export function CompetitionsList({
                   <span className="tag" key={tag}>{tag}</span>
                 ))}
               </div>
-            </div>
+            </Link>
           </article>
         ))}
       </div>

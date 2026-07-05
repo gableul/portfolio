@@ -171,7 +171,18 @@ export const dict = {
     "work.thales.b4": "Automate reporting and data workflows",
     "work.thales.b5": "Coordinate stakeholders across teams",
     "r.safe.paper.fr": "Paper (FR)",
-    "r.safe.paper.en": "Paper (EN)"
+    "r.safe.paper.en": "Paper (EN)",
+    "back.competitions": "Back to competitions",
+    "comp.detail.stack": "Stack",
+    "comp.detail.prizes": "Prizes",
+    "comp.detail.duration": "Duration",
+    "c.paris.prize1": "EUR 500 in fal credits",
+    "c.berlin.prize1": "EUR 2,500 cash",
+    "c.berlin.prize2": "EUR 2,500 in Gemini credits",
+    "c.berlin.prize3": "6-month Pioneer subscription",
+    "c.berlin.prize4": "Gradium subscription",
+    "c.berlin.prize5": "Total prize value ~EUR 10,000",
+    "c.alan.prize1": "6-month ElevenLabs Scale subscription (~USD 3,500 value)"
   },
   "fr": {
     "home.name": "Gabriel Leulmi",
@@ -340,7 +351,18 @@ export const dict = {
     "work.thales.b4": "Automatiser le reporting et les flux de données",
     "work.thales.b5": "Coordonner les parties prenantes entre les équipes",
     "r.safe.paper.fr": "Papier (FR)",
-    "r.safe.paper.en": "Papier (EN)"
+    "r.safe.paper.en": "Papier (EN)",
+    "back.competitions": "Retour aux compétitions",
+    "comp.detail.stack": "Stack",
+    "comp.detail.prizes": "Prix",
+    "comp.detail.duration": "Durée",
+    "c.paris.prize1": "500 € de crédits fal",
+    "c.berlin.prize1": "2 500 € en cash",
+    "c.berlin.prize2": "2 500 € de crédits Gemini",
+    "c.berlin.prize3": "Abonnement Pioneer 6 mois",
+    "c.berlin.prize4": "Abonnement Gradium",
+    "c.berlin.prize5": "Valeur totale des prix ~10 000 €",
+    "c.alan.prize1": "Abonnement ElevenLabs Scale 6 mois (valeur ~3 500 $)"
   }
 } as const;
 
