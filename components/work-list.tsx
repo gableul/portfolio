@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { T } from "@/components/language";
 import { jobs } from "@/lib/work";
+import { asset } from "@/lib/base-path";
 
 const DELAYS = ["d3", "d4", "d5"];
 
@@ -27,7 +28,7 @@ export function WorkList({ logos }: { logos: Record<string, string | null> }) {
               <div className="card__head">
                 {logos[job.slug] && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img className="proj-logo" src={logos[job.slug]!} alt="" />
+                  <img className="proj-logo" src={asset(logos[job.slug]!)} alt="" />
                 )}
                 <h3 className="card__title"><T k={job.nameKey} /></h3>
               </div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { T } from "@/components/language";
 import { projects } from "@/lib/projects";
+import { asset } from "@/lib/base-path";
 
 const DELAYS = ["d3", "d4", "d5", "", "", "", "", ""];
 
@@ -27,7 +28,7 @@ export function ProjectsList({ logos }: { logos: Record<string, string | null> }
               <div className="card__head">
                 {logos[project.slug] && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img className="proj-logo" src={logos[project.slug]!} alt={`${project.title} logo`} />
+                  <img className="proj-logo" src={asset(logos[project.slug]!)} alt={`${project.title} logo`} />
                 )}
                 <h3 className="card__title">{project.title}</h3>
               </div>

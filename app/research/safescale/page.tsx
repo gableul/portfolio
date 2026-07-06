@@ -3,6 +3,7 @@
 import { BackLink } from "@/components/back-link";
 import { T, useLang } from "@/components/language";
 import type { MessageKey } from "@/lib/i18n";
+import { asset } from "@/lib/base-path";
 
 const CONTRIBUTIONS: MessageKey[] = [
   "r.safe.c1", "r.safe.c2", "r.safe.c3", "r.safe.c4", "r.safe.c5", "r.safe.c6",
@@ -47,10 +48,10 @@ export default function SafescalePage() {
         <p className="card__meta">{t("r.safe.keywords")}</p>
 
         <div className="actions">
-          <a href="/papers/safescale-fr.pdf" target="_blank" rel="noopener">
+          <a href={asset("/papers/safescale-fr.pdf")} target="_blank" rel="noopener">
             {t("r.safe.paper.fr")}
           </a>
-          <a href="/papers/safescale-en.pdf" target="_blank" rel="noopener">
+          <a href={asset("/papers/safescale-en.pdf")} target="_blank" rel="noopener">
             {t("r.safe.paper.en")}
           </a>
           <a href="#" rel="noopener">GitHub</a>

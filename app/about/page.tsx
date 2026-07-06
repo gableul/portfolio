@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BackLink } from "@/components/back-link";
 import { T, useLang } from "@/components/language";
+import { asset } from "@/lib/base-path";
 
 const BIRTH = "2003-08-26";
 const TECH_SKILLS = [
@@ -52,7 +53,7 @@ export default function AboutPage() {
         </div>
         <div>
           <span className="k">{t("about.k.cv")}</span>{" "}
-          <a href="/cv.pdf" target="_blank" rel="noopener">
+          <a href={asset("/cv.pdf")} target="_blank" rel="noopener">
             pdf <span className="ext">↗</span>
           </a>
         </div>

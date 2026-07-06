@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { T } from "@/components/language";
 import type { Competition } from "@/lib/competitions";
+import { asset } from "@/lib/base-path";
 
 const DELAYS = ["d3", "d4", "d5"];
 
@@ -32,7 +33,7 @@ export function CompetitionsList({
               <div className="card__head">
                 {logos[c.slug] && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img className="proj-logo" src={logos[c.slug]!} alt={`${c.name} logo`} />
+                  <img className="proj-logo" src={asset(logos[c.slug]!)} alt={`${c.name} logo`} />
                 )}
                 <h3 className="card__title">{c.name}</h3>
               </div>
