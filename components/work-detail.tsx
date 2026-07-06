@@ -3,6 +3,7 @@
 import { BackLink } from "@/components/back-link";
 import { T, useLang } from "@/components/language";
 import type { Job } from "@/lib/work";
+import { asset } from "@/lib/base-path";
 
 export function WorkDetail({
   job,
@@ -20,7 +21,7 @@ export function WorkDetail({
       <div className="proj-head reveal d1">
         {logo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="proj-logo" src={logo} alt="" />
+          <img className="proj-logo" src={asset(logo)} alt="" />
         )}
         <h1 className="page-title"><T k={job.nameKey} /></h1>
       </div>

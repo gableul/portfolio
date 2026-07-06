@@ -4,6 +4,7 @@ import { BackLink } from "@/components/back-link";
 import { T, useLang } from "@/components/language";
 import type { Project } from "@/lib/projects";
 import type { ProjectAssets } from "@/lib/assets";
+import { asset } from "@/lib/base-path";
 
 export function ProjectDetail({
   project,
@@ -21,7 +22,7 @@ export function ProjectDetail({
       <div className="proj-head reveal d1">
         {assets.logo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="proj-logo" src={assets.logo} alt={`${project.title} logo`} />
+          <img className="proj-logo" src={asset(assets.logo)} alt={`${project.title} logo`} />
         )}
         <h1 className="page-title">{project.title}</h1>
       </div>
@@ -69,7 +70,7 @@ export function ProjectDetail({
           <div className="shots">
             {assets.shots.map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
-              <img key={src} src={src} alt={`${project.title} screenshot ${i + 1}`} />
+              <img key={src} src={asset(src)} alt={`${project.title} screenshot ${i + 1}`} />
             ))}
           </div>
         ) : (

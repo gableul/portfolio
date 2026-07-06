@@ -4,6 +4,7 @@ import { BackLink } from "@/components/back-link";
 import { T, useLang } from "@/components/language";
 import { CompetitionArticle } from "@/components/competition-article";
 import type { Competition } from "@/lib/competitions";
+import { asset } from "@/lib/base-path";
 
 export function CompetitionDetail({
   competition,
@@ -21,7 +22,7 @@ export function CompetitionDetail({
       <div className="proj-head reveal d1">
         {logo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="proj-logo" src={logo} alt={`${competition.name} logo`} />
+          <img className="proj-logo" src={asset(logo)} alt={`${competition.name} logo`} />
         )}
         <h1 className="page-title">{competition.name}</h1>
       </div>
