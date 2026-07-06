@@ -1,0 +1,89 @@
+## A proactive voice agent for medical follow-up
+
+At the Alan x Mistral AI hackathon, my team and I built **Maude** — a voice AI agent that lives inside the Alan health insurance app and *calls members back* after a medical event. Not a chatbot you open when you have a problem, but an agent that picks up the phone first. We won the **ElevenLabs track** with it, and the prize was a six-month ElevenLabs Scale subscription valued at roughly 3,500 dollars. This is the engineering story: how it is built, how the pieces fit, and how we would take it to production.
+
+## The problem: nobody calls you back
+
+The premise is mundane and universal. A patient walks out of a doctor's office and, ten minutes later, has forgotten half of what was said. Nobody checks whether they are actually taking their medication, whether they booked their follow-up, or whether a complication is quietly developing. Alan already automates over 100,000 chat conversations with a 4.5 out of 5 satisfaction score, and their stated next priority is phone-based support. Maude is a prototype of exactly that: the proactive, voice extension of Mo, Alan's in-app assistant.
+
+The framing that mattered most to us was **proactive vs reactive**. A reactive agent waits to be summoned; the burden of noticing a problem sits with the patient. A proactive agent reverses that — it initiates, it remembers the context of a specific surgery or consultation, and it opens with a concrete question rather than a generic "how can I help you?" In the demo, Maude calls Sophie about her right-knee arthroscopy from March 26, by name, referencing her surgeon and the date. That single reversal changes the emotional texture of the whole product.
+
+## The orchestration: three AI providers, one conversation
+
+Under the hood, Maude is two deployables that meet in the middle over LiveKit Cloud: a Next.js frontend on Vercel and a Python agent hosted on LiveKit. The interesting part is the voice pipeline, which stitches together three separate AI vendors into a single real-time loop.
+
+```
+you speak → WebRTC audio → LiveKit Cloud
+   → Voxtral STT (streaming transcription)
+   → Silero VAD + multilingual turn detector (is the turn over?)
+   → Mistral Small (reasoning + function calling)
+        - get_reimbursement_info()   -> Linkup web search
+        - get_wearable_data()        -> Thryve API
+        - find_nearby_provider()     -> Linkup
+        - flag_alert() / schedule_followup()
+   → ElevenLabs TTS (Flash v2.5)
+   → WebRTC audio → you hear Maude
+```
+
+**Mistral does the thinking and the listening.** We use Voxtral (`voxtral-mini-transcribe-realtime-2602`) for streaming speech-to-text — a 4B model with sub-500ms latency — and Mistral Small (`mistral-small-latest`) as the reasoning brain, using its native function calling to decide when to look up a reimbursement rate, pull wearable data, or raise an alert. **ElevenLabs gives Maude her voice**, running Flash v2.5 for the lowest possible time-to-first-byte. **LiveKit carries everything** — the WebRTC audio in both directions, plus text streams that ship structured JSON back to the browser mid-call.
+
+The elegant surprise here is how little glue code the conversation loop itself requires. The `AgentSession` in the LiveKit Agents framework wires STT, VAD, turn detection, LLM, and TTS together; once it is configured, the bidirectional audio flow is essentially free. Almost all of our actual code lives in the *edges* — the function tools, the playbook prompt, and the post-call summary.
+
+## The latency budget
+
+Natural conversation has a brutal latency budget. If the gap between a person finishing their sentence and the agent replying stretches past roughly a second, the illusion of a person collapses and it feels like a machine. Every stage of the pipeline eats into that budget, so we treated it as a running total to defend:
+
+```
+end of speech -> Silero VAD confirms silence
+             -> turn detector says "your turn"
+             -> Mistral Small first token
+             -> ElevenLabs Flash v2.5 first byte (~75ms)
+             -> audio reaches the ear
+```
+
+Three choices came directly out of this constraint. We picked **Voxtral realtime** streaming rather than batch transcription, so text is flowing while you are still talking. We picked **ElevenLabs Flash v2.5** specifically for its very low time-to-first-byte over higher-fidelity but slower models. And we ran a **multilingual turn detector** alongside Silero VAD so the agent knows when a turn is genuinely finished, instead of interrupting on a pause. Turn-taking is a first-class design surface here, not an afterthought: getting the hand-off timing right is what makes the difference between a call that feels human and one that talks over you.
+
+## Medical data and GDPR
+
+Voice plus health data is about the most sensitive combination there is, so we designed the data architecture GDPR-first — as something we would defend in front of a regulator, not patch on later. Three principles drive it.
+
+First, **the model runs where the data can legally live.** For a commercial deployment we would self-host or privately host the language and voice models — inside an EU region or on-prem — so that protected health information never leaves a controlled, EU-resident boundary and is never handed to a third party for training. Voxtral and Mistral Small being open-weight models makes this genuinely achievable rather than aspirational.
+
+Second, **the data is anonymized and pseudonymized before it ever reaches the model.** Identifiers are stripped or tokenized, so the agent reasons over a pseudonymous clinical context — "the patient" plus their medications and wearable trends — rather than a named identity. Re-identification stays behind Alan's own access-controlled boundary. On top of that: explicit consent flows before any call, encryption at rest and in transit, and data-residency guarantees baked into where every component is hosted.
+
+Third, **the agent never diagnoses and never prescribes.** The playbook makes this an absolute rule, and every clinical worry is routed to a real doctor via Alan's Clinique rather than answered directly. Everything the agent emits is a structured `CallSummary` object streamed to the care-team dashboard — bounded, inspectable, and auditable by design, rather than a free-floating transcript.
+
+## Multilingual, from the first byte
+
+Maude is bilingual French and English, and the language is chosen before the call even connects — the frontend passes a `language` attribute alongside the patient ID, and the agent reads it to build the right greeting, prompt, and voice configuration. Voxtral and the multilingual turn detector both handle FR and EN, and ElevenLabs Flash v2.5 covers 32 languages including French, so the same pipeline serves both without swapping components. It is a small detail, but a member in Paris switching to French and hearing Maude respond naturally is worth more than any slide — and the same architecture extends to new markets by adding a language, not a rebuild.
+
+## Wearable signals from Thryve
+
+Health context is what makes the follow-up feel personal rather than scripted. We pulled wearable data through **Thryve**, which aggregates heart rate, sleep, and activity from devices like Fitbit, Apple Watch, and Garmin. In the Sophie scenario, that surfaces as an elevated resting heart rate (78 versus a 65 baseline), declining sleep, and a low step count — signals the agent can weave into the conversation ("I noticed you have been walking a lot less than usual") and correlate with the clinical context of a recent surgery. The wearable layer sits behind a clean tool boundary, so as we onboard more providers the agent gains signal without any change to the conversation logic.
+
+## Productionizing it
+
+Taking Maude from a hackathon win to a service real members rely on is an exercise in anticipating the failure modes of a real-time, multi-vendor system and engineering each one away.
+
+- **Cold start.** LiveKit spins the agent up on demand, and a first call can pay a start-up cost before the greeting. In production we keep a **warm agent pool** with pre-warmed workers — Silero VAD and the turn-detector model are already loaded at worker startup — so a member is greeted the instant they accept, with no perceptible wait.
+- **External API resilience.** Thryve and Linkup are network dependencies with their own latency and availability envelopes. We wrap them with **resilient caching and graceful fallbacks**: wearable snapshots and reimbursement lookups are cached and served fast, timeouts degrade to the last known-good value, and the conversation never blocks on an upstream. The agent stays fluent even when a partner API is slow.
+- **Dependency management.** The stack rides fast-moving packages — the LiveKit Agents framework, the Mistral plugins, `mistralai`. We treat that as a supply-chain surface: **pinned versions, a verified compatibility matrix, and CI gates** that import-test the pipeline before anything ships, so upgrades are deliberate and reversible rather than surprises in front of a member.
+
+## The ElevenLabs-track win
+
+We won the **ElevenLabs track**, and the six-month Scale subscription (about 3,500 dollars) was the prize. The voice was genuinely the thing that landed the product — a follow-up call only works if it sounds like a person who cares, and Flash v2.5's speed plus quality is what let Maude feel warm rather than robotic. That validated the bet at the center of the whole project: the hard part of a proactive medical agent is not the reasoning, it is making the reasoning arrive as a natural human voice, fast enough to feel alive.
+
+## Stack
+
+- **Speech-to-text:** Mistral Voxtral (`voxtral-mini-transcribe-realtime-2602`), streaming, sub-500ms
+- **Reasoning:** Mistral Small (`mistral-small-latest`) with native function calling
+- **Text-to-speech:** ElevenLabs Flash v2.5 (very low time-to-first-byte, 32 languages)
+- **Turn-taking:** Silero VAD plus a multilingual turn detector
+- **Real-time transport:** LiveKit Cloud — WebRTC audio plus JSON text streams
+- **Tools and data:** Linkup (reimbursement and provider search), Thryve (wearables)
+- **Frontend:** Next.js 15.5, React 19, Tailwind 4 on Vercel
+- **Agent:** Python, LiveKit Agents framework, hosted on LiveKit Cloud
+
+## Lessons, and where it goes next
+
+The biggest lesson is that **orchestrating multiple AI providers is a latency-management problem before it is anything else**. Each vendor is excellent in isolation; the craft is in the seams, in defending a one-second budget across four network hops. The natural next steps follow the production roadmap above: a self-hosted, EU-resident model for a fully GDPR-owned data path, a warm agent pool that erases cold start, and richer barge-in handling so members can interrupt naturally. I would also keep investing in the playbook — the shift from a rigid seven-step script to a warmer, "like your mother calling to check on you" tone was, in the end, as important as any model choice. The technology makes the call possible; the writing makes it worth answering.

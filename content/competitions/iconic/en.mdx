@@ -1,0 +1,84 @@
+## Reconstructing Google Solar from scratch in 36h
+
+At the BIG Berlin Hack, run by `{Tech: Europe}`, we had 36 hours and a deceptively simple pitch: type in a single street address, and watch an AI design a complete home renewable-energy system for it. Solar panels placed on the real roof. A heat pump sized to the house. A battery. An EV charger. All from the address, and nothing else.
+
+We called it **Iconic**. It won the Reonic track and placed 2nd out of more than 380 teams. This is the story of how we rebuilt the hardest part — Google Solar's roof-potential estimation — from scratch, and engineered it to work for any building we point it at.
+
+## The problem: seven manual steps, done in seconds
+
+Reonic installers do seven manual design steps for every quote: draw the roof, place the panels, pick the inverter, size the battery, recommend a heat pump, build the bill of materials, and produce the offer. Manually, that is roughly 25 minutes of expert work per house. Our goal was to compress all seven into a single visible AI sequence — about 22 seconds on screen — grounded in **1,620 real Reonic deliveries** so every number traces back to a real installation.
+
+The catch: to place panels you need the roof. Real geometry, real orientation, real obstructions. Google's Solar API gives you exactly that — but only where it has coverage, and a product that only works in a handful of well-mapped neighborhoods isn't a product. We wanted Iconic to design a system for *any* address a customer might enter, so we built our own roof-and-potential reconstruction that runs the same way everywhere.
+
+## Why rebuild Google Solar at all
+
+Google's Solar API returns a beautiful pre-computed roof-segment breakdown: azimuth, pitch, area, annual sunshine per square meter. Where it covers a building, it's excellent. But coverage is patchy outside dense urban cores, and building a commercial tool on top of a dependency that silently has no answer for a chunk of your addressable market is a liability we didn't want to ship.
+
+So we treated the Solar API as a *reference we could reproduce* rather than a dependency. Given a raw 3D mesh of a building, everything Google returns is derivable: cluster the mesh into flat roof faces, measure each face's azimuth and tilt from its normal, integrate its area, and model the annual irradiance. That became our own analysis engine — one that answers for every address, not just the mapped ones.
+
+## The 21-variant roof algorithm
+
+Roof reconstruction from photogrammetry is genuinely hard, and that difficulty is inherent to the input, not to the effort. A raw aerial mesh is noisy — trees, chimneys, neighboring walls, and reconstruction artifacts all masquerade as roof. A single fixed set of parameters that nails a clean gable roof will fail badly on a hipped roof with dormers, and vice versa. The real world spans both, so a single-config analyzer would be brittle in exactly the way a production tool can't afford.
+
+Rather than chase one perfect parameterization, we designed the analyzer as a deliberate ensemble. `analyze-multi.ts` fans out the same core analyzer across a large family of preset parameter variants — labelled `A` through `V`, more than twenty of them — each a different combination of knobs:
+
+- eaves-buffer strategy and buffer width
+- how aggressively to drop north-facing faces (a tilt threshold)
+- multi-level de-duplication distances (for stacked or overlapping planes)
+- edge offsets, grid resolution, minimum yield-per-panel cutoffs, maximum shaded fraction
+
+Each variant runs as its own child process, writing to a suffixed file like `{house}-analysis-A.json`. Then we *score* every result and keep the winner. The scoring heuristic is deliberately physical:
+
+```
+coverage = panelArea / faceArea
+score    = closeness(coverage, 0.40)
+           with hard penalties for coverage > 0.95 (impossible)
+           and coverage < 0.10 (implausibly sparse)
+```
+
+A typical residential install lands around 30–45% roof coverage, so we reward variants whose panel packing lands near 40% and reject the physically impossible ones outright. It's a search over parameterizations judged by whether the *outcome* looks like a real install — a self-validating design that generalizes across roof shapes instead of overfitting to one. That robustness is exactly the property you want when the next address is one you've never seen.
+
+The core face analysis is a DBSCAN over the mesh triangle normals: cluster coplanar triangles into faces, compute each face's mean normal, derive azimuth (0° = North, clockwise) and tilt, and integrate area from the triangle sum. Yield is modelled from a German baseline of **1100 kWh/m²/yr**, scaled by how far a face deviates from the optimal 35° tilt and 180° (south) azimuth, using cosine falloffs and SunCalc for sun position. It's a transparent, auditable first-order model that reproduces the *shape* of Google Solar's answer — and because every constant is explicit, it's straightforward to refine toward a PVGIS- or NREL-grade irradiance model as the product matures.
+
+## The satellite-to-3D pipeline
+
+To design for an arbitrary address, we built a live geometry pipeline that stitches together four services. It runs entirely server-side and caches every stage to disk — a deliberate cost and latency strategy, since several steps are slow and metered:
+
+1. **Aerial capture** — the top-down view is a proxy over Google Static Maps. The oblique, tilted view is the interesting one: we render **Google Photorealistic 3D Tiles through Cesium**, headlessly, in Chromium via Playwright. That gives us a real three-quarter perspective of the building — the angle a 3D reconstructor needs. It takes ~10–15s, so results are cached as PNGs keyed on latitude, longitude, zoom and tilt.
+
+2. **Building isolation** — the oblique screenshot is full of neighbors, streets, and trees. We run **GPT Image 2 in edit mode** (via fal) to cut everything down to just the target building on a clean white background. This is the single most important step in the chain: a clean, isolated subject is what makes the next stage produce a usable mesh instead of noise. It's cached too, because it's ~25s of paid quota per address.
+
+3. **Image-to-3D mesh** — the cleaned image goes to **fal.ai**, where we wired both `fal-ai/trellis-2` and Hunyuan 3D (v3.1 Pro) image-to-3D to generate a GLB mesh. Hunyuan Pro can take 60–120s for a high-face-count mesh, which is why our Cloud Run timeout is set to 600s.
+
+4. **Roof analysis** — the mesh feeds the DBSCAN-plus-scoring analyzer above, producing the canonical `analysis.json`: faces, obstructions, module positions, footprint, and per-face yield. For the demo houses we run this offline and cache the result — the same pipeline, precomputed — so the on-stage path is instant while the live path handles anything new.
+
+One deliberate design decision from day one: **the raw photogrammetric mesh is never shown to the user.** It's noisy by nature and does not read as a trustworthy artifact. It exists purely as a data source. What the user sees is a clean, low-poly architectural render — a Norman Foster / Apple Maps aesthetic in react-three-fiber — built to match the building's real proportions, panels dropping onto the actual roof faces, with a subtle turbo-gradient heatmap of per-square-meter yield. Presenting a designed render backed by real geometry is both better UX and a more honest representation of what we actually computed.
+
+## The rest of the brain
+
+Geometry is only half of it. On top sits the sizing and reasoning layer: a **k-NN engine** over the 1,620 Reonic deliveries (k=5 on z-score-normalized features, median-aggregated to recommend kWp, battery kWh, and price), a **Gemini** agent that narrates the design sequence and streams a customer-facing explanation, a fine-tuned **Pioneer (Fastino)** classifier for component choices, and **Tavily** for live German feed-in tariffs. The whole thing exports a one-page PDF quick-offer behind a human-in-the-loop approval modal.
+
+## Stack
+
+- **Next.js 16** + React 19 (App Router), deployed on Google Cloud Run at `iconic.haus`
+- **react-three-fiber** + drei + postprocessing on top of **three.js**, with zustand and framer-motion
+- **Google Photorealistic 3D Tiles** via **Cesium**, rendered headlessly in **Playwright/Chromium**
+- **fal.ai** — GPT Image 2 (building isolation) and Trellis-2 / Hunyuan 3D (image-to-3D)
+- **Google Static Maps + Geocoding**, **Gemini**, **Pioneer (Fastino)**, **Tavily**
+- Custom TypeScript pipeline: fetch 3D Tiles, analyze roof (DBSCAN), sweep variants, place panels
+
+## Toward production
+
+We built Iconic to demo, but we architected it for the questions a real deployment asks. Here's how the design already answers them.
+
+- **Slow, metered external calls.** Aerial renders, GPT Image 2 edits, and Hunyuan meshes are each seconds-to-minutes of paid quota. Every stage is cached to disk keyed on coordinates, so any address is computed once and served instantly forever after. Precomputing the demo houses is the same mechanism applied ahead of time — the natural next step is a warm-pipeline worker that bakes geometry for popular regions and queues live requests behind a status stream.
+
+- **Variable mesh quality.** Image-to-3D output depends on the input view, so the analyzer treats mesh quality as a first-class concern rather than an assumption. The 21-variant sweep with plausibility scoring is itself the validation layer — implausible reconstructions score out — and we keep a layered fallback path (LOD2 cadastral building footprints, then a footprint-driven estimate) so a request always yields a defensible design instead of failing.
+
+- **A robust ingestion path.** Offline captures for the demo houses and live reconstruction for new addresses are not two systems — they're one ingestion path with a cache in front. That means the production story is a scaling and warming problem, not a rewrite: the same `analysis.json` contract feeds the sizing engine and the 3D scene whether it came from cache or from a live Cesium-to-Hunyuan run.
+
+- **Parallel, contract-driven development.** We froze the shared `types.ts` contract early so four workstreams could move independently, and every stage communicates through stable JSON artifacts. That decoupling is what let the pipeline come together cleanly in 36 hours, and it's the same seam along which you'd later swap in a better irradiance model or a different mesh provider without touching the rest.
+
+- **Grounded, auditable output.** Sizing is a k-NN over 1,620 real deliveries and the yield model is fully explicit, so every recommendation is traceable rather than a black box — exactly what an installer needs to trust before signing an offer.
+
+Type an address, get a designed renewable system in seconds, grounded in 1,620 real deliveries — reconstructed from scratch, and built to scale beyond the three houses on stage.

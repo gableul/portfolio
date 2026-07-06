@@ -1,0 +1,84 @@
+# Optimizing SAFe PI Planning with NSGA-II
+
+For my master's thesis I spent a year building **SAFESCALE**, a system that helps a Release Train Engineer plan a quarter of work across nine software teams. This post is the accessible companion to the academic paper: the same ideas, told as a narrative, with the formulas that matter but none of the ceremony.
+
+## Why PI Planning is genuinely hard
+
+In a large organization running the Scaled Agile Framework (SAFe), dozens of teams work on the same product at once. Every eight to twelve weeks they gather for **PI Planning** (Program Increment Planning): a one- to two-day event where an **Agile Release Train** of five to twelve teams (fifty to a hundred and twenty-five people) decides collectively what to build next, who builds it, and in what order. The **Release Train Engineer** (RTE) facilitates that event and, today, arbitrates every conflict by hand.
+
+The trouble is that this is not really a facilitation problem, it is a combinatorial one. Formally, PI Planning is an instance of the **Resource-Constrained Project Scheduling Problem** (RCPSP), known to be **NP-hard** since Herroelen and colleagues surveyed it in 1998. In my instance there are hundreds of technical tasks to schedule across dozens of multi-skilled people, constrained by a dependency graph, team capacities, required skills, and business deadlines. The number of candidate plans grows roughly like the number of eligible resources raised to the power of the number of tasks. Past about twenty tasks, exhaustive enumeration is already hopeless; at seven hundred it is physically inconceivable. No human can hold more than a few candidate plans in their head, let alone score their trade-offs across several dimensions at once.
+
+The market tools (Jira Align, Rally, Azure DevOps) are excellent at **capturing** and **visualizing** a plan. None of them, as far as I could find, actually **optimizes** one. That gap is the niche this thesis tries to fill.
+
+## From one goal to six
+
+Reducing PI Planning to a single number would be a comfortable lie. A plan that minimizes total duration will happily overload a key person and leave zero slack for the inevitable surprises. A plan that is generous with slack will slip past its business deadlines. These criteria genuinely contradict each other, so there is no single "best" plan, only a set of non-dominated trade-offs: a **Pareto front**.
+
+So SAFESCALE optimizes six objectives at once, all to be minimized:
+
+```
+f1  Makespan               total calendar span of the plan
+f2  ML risk                average per-task risk predicted by a Random Forest
+f3  Buffer deficit         how far tasks sit below a 10% safety margin to deadline
+f4  Resource overload      resource-days where someone is assigned two tasks at once
+f5  Capacity violation     story points booked beyond a team's per-sprint velocity
+f6  WSJF-weighted tardiness lateness, weighted by each feature's business value
+```
+
+The sixth is my own contribution and the one I care about most. A plain tardiness objective treats every late feature as equally bad. But in SAFe, features carry a **WSJF** score (Weighted Shortest Job First) that captures business value and urgency. So `f6` multiplies each feature's lateness by its WSJF before summing, which means a high-value feature delivered late costs several times more in the objective than a minor feature slipping by the same number of days. In words: **the average, over all tasks, of the feature's WSJF times its lateness.** This creates a productive tension with the makespan objective: a plan that goes faster by delaying valuable work now pays for it in `f6`, so it survives only if nothing else can deliver those same features on time.
+
+## NSGA-II, and why evolution
+
+The engine is **NSGA-II** (Deb et al., 2002), the reference genetic algorithm for multi-objective problems. It treats each candidate plan as a chromosome, where each gene assigns one task to one qualified resource and the gene order encodes execution order. A deterministic decoder walks that order, respects precedence (a task starts no earlier than its predecessors finish) and resource availability, and turns the chromosome into a concrete schedule with real start and end days.
+
+From there it is Darwinian. Each generation breeds offspring by tournament selection, two-point crossover on the resource assignments, and three flavours of order-and-assignment mutation. Parents and children are pooled, sorted into Pareto fronts by fast non-dominated sorting, and the best individuals survive, with a **crowding distance** tie-break that rewards isolated solutions so the front stays diverse rather than collapsing onto one optimum. In discussion mode this runs roughly sixty generations on a population of forty in fifteen to thirty seconds.
+
+## Smarter seeds and a memetic search
+
+Starting from pure randomness wastes generations. So I seed the initial population with six strategic individuals, each a topological sort under a different priority: WSJF-first, earliest deadline first, load balancing, longest critical path, ML-risk-minimizing, and a new combined seed I designed that ranks by WSJF divided by deadline. That last one fixes a blind spot: a high-value feature due on day 45 is not actually urgent, while the same value due on day 10 is, and dividing value by deadline captures both dimensions in a single number. The rest of the population is random topological orders.
+
+On top of that, every five generations I run a **memetic local search** on the most spread-out fifteen percent of the current Pareto front, inspired by results from a 2024 Memetic NSGA-II paper. It greedily tries eight small moves per individual (offloading the busiest resource, or swapping two deadline-bearing tasks) and keeps any that dominate the original. A separate anti-stagnation mechanism watches for a front that stops improving for fifteen generations, then raises the mutation rate and injects fresh random individuals, deliberately never touching the front-zero elite it has already found.
+
+## A five-step multi-agent pipeline
+
+Rather than one monolithic optimizer, SAFESCALE is an **orchestrated** multi-agent system. I chose orchestration over emergent, autonomous agents deliberately: for an academic thesis, reproducibility and traceability matter more than emergent cleverness. A central orchestrator drives specialized agents through five steps:
+
+- **Readiness** — a deterministic classifier labels each feature READY, BORDERLINE, or NOT_READY; an LLM only summarizes the findings.
+- **Dependencies** — a depth-first search finds cycles and measures the critical chain.
+- **Team planning** — nine team agents each build their capacity plan for the quarter.
+- **NSGA-II optimization** — the front of trade-off scenarios is generated.
+- **Negotiation** — each team scores and votes on the scenarios, and the RTE makes the final call.
+
+One rule holds throughout: **the LLM is a translator, never a decision-maker.** It puts calculated results into plain language and proposes wording, but it never classifies a feature, computes a KPI, or votes. Every decision that matters is deterministic, which is what makes a whole session replayable and defensible in front of an examiner.
+
+## Why a human in the loop
+
+The obvious question is why not automate the whole thing. Two reasons. First, PI Planning is not only an optimization, it is a ritual of negotiation and public commitment; an SAFe organization would reject a black box that hands down a plan. Second, and more practically, some judgments are genuinely the RTE's to make.
+
+So the human loop is **conditional**: the RTE is interrupted only when the system detects a problem it should not resolve alone. Backlog not ready, a dependency cycle, a team pushed past **80 percent** of capacity, or an unresolved scenario conflict. Below those thresholds, steps auto-chain silently. When a team is overloaded, the system does not just report it, it ranks which features are cheapest to drop, using an impact score of **one divided by WSJF times one-plus-the-number-of-things-it-blocks**, so that the suggestions are low-value features that block little. The RTE sees, live, how each removal relieves each team before committing. And every one of these decision points is recorded, with its alternatives and rationale, in a decision trace, so the causal chain of a whole session can be reconstructed afterwards.
+
+## Buffers where the risk actually is
+
+A subtlety most textbook RCPSP formulations ignore: a task estimated at three person-days almost never runs in three consecutive calendar days. Meetings, context-switching, and blocked time stretch it. Following a queueing result (Kingman's law, popularized for flow by Reinertsen), I model calendar time as effort time times a `span_factor` defaulting to two:
+
+```
+calendar_duration = effort_duration × span_factor
+```
+
+Then, instead of padding every estimate (which Goldratt's *Critical Chain* warns just gets wasted), I concentrate protective slack where variance actually lives. A deterministic risk model scores each task and inserts a proportional feeding buffer after it:
+
+```
+risk_score = 0.30·complexity + 0.20·span_factor + 0.20·predecessors
+           + 0.20·rare_skill (data / mobile / devops) + 0.10·effort
+buffer_days = round(risk_score × 5)      # capped at about a third of a sprint
+```
+
+The scheduler then holds the resource for that buffer and starts the successor only after it, so risky work (high complexity, junior team, scarce skill) gets a real cushion, and the RTE can see on the Gantt exactly where the tampon zones sit.
+
+## The dataset, and the roadmap ahead
+
+The system is exercised on a purpose-built synthetic dataset generated from a fixed seed, which is exactly what a rigorous experimental protocol needs: one ART, nine specialized teams, a twelve-week PI of four three-week sprints, and on the order of a hundred and thirty-five stories decomposed into hundreds of tasks, all fully reproducible run to run. The skill distribution is engineered to be lopsided, with a scarce `data` capability, so the capacity bottleneck and the human-in-the-loop feature-removal flow are triggered and demonstrated on purpose rather than left to chance. Controlling the instance this tightly is what let me isolate the contribution of each mechanism.
+
+Several design choices are deliberate scope decisions for the proof of concept, and each one maps to a concrete step toward a production decision-support tool. Durations are treated as deterministic for clean, repeatable experiments; adding probabilistic estimates is a natural extension. The `span_factor` of two is a calibrated, literature-backed baseline that can be tuned per team and per resource as real data arrives. The buffers are local feeding buffers today, with consolidation into a single Goldratt-style project buffer as the next increment. And the pipeline runs in batch on a single ART, which is the right place to prove the approach before scaling out. The roadmap is clear: move to NSGA-III for even sharper six-objective fronts, wire in real Jira and Azure DevOps backlogs, and validate on an industrial Release Train. To my knowledge the combination itself is new: a six-objective, SAFe-aware NSGA-II, an orchestrated multi-agent pipeline, and a Critical Chain risk model, with a human who keeps the final decision, all working end to end.
+
+Read the full research abstract on the [research page](/research/safescale).

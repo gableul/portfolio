@@ -1,0 +1,84 @@
+# Optimiser le SAFe PI Planning avec NSGA-II
+
+Pour mon mémoire de master, j'ai passé un an à construire **SAFESCALE**, un système qui aide un Release Train Engineer à planifier un trimestre de travail réparti sur neuf équipes de développement. Cet article est le pendant accessible du mémoire académique : les mêmes idées, racontées comme un récit, avec les formules qui comptent mais sans le formalisme.
+
+## Pourquoi le PI Planning est vraiment difficile
+
+Dans une grande organisation qui pratique le Scaled Agile Framework (SAFe), des dizaines d'équipes travaillent sur le même produit en même temps. Toutes les huit à douze semaines, elles se réunissent pour le **PI Planning** (Program Increment Planning) : un événement d'une à deux journées où un **Agile Release Train** de cinq à douze équipes (cinquante à cent vingt-cinq personnes) décide collectivement quoi construire, qui le construit et dans quel ordre. Le **Release Train Engineer** (RTE) facilite cet événement et, aujourd'hui, arbitre chaque conflit à la main.
+
+Le problème, c'est que ce n'est pas vraiment un problème de facilitation, mais un problème combinatoire. Formellement, le PI Planning est une instance du **Resource-Constrained Project Scheduling Problem** (RCPSP), reconnu **NP-difficile** depuis la revue d'Herroelen et collègues en 1998. Dans mon instance, il faut ordonnancer des centaines de tâches techniques sur des dizaines de personnes multi-compétences, sous les contraintes d'un graphe de dépendances, des capacités des équipes, des compétences requises et des deadlines business. Le nombre de plans candidats croît à peu près comme le nombre de ressources éligibles élevé à la puissance du nombre de tâches. Au-delà d'une vingtaine de tâches, l'énumération exhaustive est déjà sans espoir ; à sept cents, elle est physiquement inconcevable. Aucun humain, aussi expérimenté soit-il, ne peut garder plus de quelques plans candidats en tête, et encore moins comparer leurs compromis sur plusieurs dimensions à la fois.
+
+Les outils du marché (Jira Align, Rally, Azure DevOps) excellent à **saisir** et **visualiser** un plan. Aucun, à ma connaissance, n'en **optimise** réellement un. C'est cet écart que le mémoire cherche à combler.
+
+## D'un objectif à six
+
+Réduire le PI Planning à un seul chiffre serait un mensonge confortable. Un plan qui minimise la durée totale surchargera volontiers une personne clé et ne laissera aucune marge pour les imprévus inévitables. Un plan généreux en marge dépassera ses deadlines business. Ces critères se contredisent réellement : il n'existe donc pas un unique « meilleur » plan, seulement un ensemble de compromis non dominés, un **front de Pareto**.
+
+SAFESCALE optimise donc six objectifs à la fois, tous à minimiser :
+
+```
+f1  Makespan               durée calendaire totale du plan
+f2  Risque ML              risque moyen par tâche prédit par une Random Forest
+f3  Déficit de buffer      écart des tâches sous une marge de sécurité de 10%
+f4  Surcharge ressources   jours-ressource où une personne a deux tâches à la fois
+f5  Violation de capacité  story points au-delà de la vélocité d'une équipe par sprint
+f6  Tardivité pondérée WSJF retard, pondéré par la valeur business de chaque feature
+```
+
+Le sixième est ma contribution propre, et celui auquel je tiens le plus. Une tardivité simple traite chaque feature en retard comme aussi grave. Or, en SAFe, les features portent un score **WSJF** (Weighted Shortest Job First) qui capture la valeur business et l'urgence. `f6` multiplie donc le retard de chaque feature par son WSJF avant de sommer : une feature à forte valeur livrée en retard coûte plusieurs fois plus dans l'objectif qu'une feature mineure avec le même retard. En mots : **la moyenne, sur toutes les tâches, du WSJF de la feature multiplié par son retard.** Cela crée une tension productive avec le makespan : un plan qui va plus vite en retardant du travail à forte valeur le paie dans `f6`, et ne survit donc que si aucun autre plan ne peut livrer ces mêmes features à temps.
+
+## NSGA-II, et pourquoi l'évolution
+
+Le moteur est **NSGA-II** (Deb et al., 2002), l'algorithme génétique de référence pour les problèmes multi-objectifs. Chaque plan candidat est un chromosome, où chaque gène assigne une tâche à une ressource qualifiée et où l'ordre des gènes encode l'ordre d'exécution. Un décodeur déterministe parcourt cet ordre, respecte les précédences (une tâche ne démarre pas avant la fin de ses prédécesseurs) et la disponibilité des ressources, puis transforme le chromosome en un planning concret avec de vrais jours de début et de fin.
+
+À partir de là, c'est darwinien. Chaque génération engendre une descendance par sélection par tournoi, croisement à deux points sur les assignations ressource et trois types de mutation d'ordre et d'assignation. Parents et enfants sont regroupés, triés en fronts de Pareto par tri non-dominé rapide, et les meilleurs individus survivent, avec un départage par **crowding distance** qui récompense les solutions isolées pour que le front reste diversifié plutôt que de s'effondrer sur un seul optimum. En mode discussion, cela tourne sur environ soixante générations avec une population de quarante, en quinze à trente secondes.
+
+## Des seeds plus malins et une recherche mémétique
+
+Partir du pur hasard gaspille des générations. J'amorce donc la population initiale avec six individus stratégiques, chacun un tri topologique selon une priorité différente : WSJF d'abord, deadline la plus proche, équilibrage de charge, plus long chemin critique, minimisation du risque ML, et un nouveau seed combiné que j'ai conçu, qui trie par WSJF divisé par deadline. Ce dernier corrige un angle mort : une feature à forte valeur due au jour 45 n'est pas vraiment urgente, alors que la même valeur due au jour 10 l'est, et diviser la valeur par la deadline capture les deux dimensions dans un seul nombre. Le reste de la population est constitué d'ordres topologiques aléatoires.
+
+Par-dessus, toutes les cinq générations, je lance une **recherche locale mémétique** sur les quinze pour cent les plus étalés du front de Pareto courant, inspirée des résultats d'un article Memetic NSGA-II de 2024. Elle tente gloutonnement huit petits mouvements par individu (délester la ressource la plus chargée, ou échanger deux tâches à deadline) et conserve ceux qui dominent l'original. Un mécanisme anti-stagnation distinct surveille un front qui cesse de progresser pendant quinze générations, puis augmente le taux de mutation et injecte des individus aléatoires frais, sans jamais toucher l'élite du front zéro déjà trouvée.
+
+## Un pipeline multi-agents en cinq étapes
+
+Plutôt qu'un optimiseur monolithique, SAFESCALE est un système multi-agents **orchestré**. J'ai choisi l'orchestration plutôt que des agents autonomes émergents de façon délibérée : pour un mémoire académique, la reproductibilité et la traçabilité comptent plus que l'intelligence émergente. Un orchestrateur central pilote des agents spécialisés à travers cinq étapes :
+
+- **Readiness** — un classifieur déterministe étiquette chaque feature READY, BORDERLINE ou NOT_READY ; un LLM se contente de résumer les constats.
+- **Dépendances** — un parcours en profondeur détecte les cycles et mesure la chaîne critique.
+- **Planification par équipe** — neuf agents équipe construisent chacun leur plan capacitaire pour le trimestre.
+- **Optimisation NSGA-II** — le front des scénarios de compromis est généré.
+- **Négociation** — chaque équipe note et vote pour les scénarios, et le RTE tranche.
+
+Une règle tient d'un bout à l'autre : **le LLM est un traducteur, jamais un décideur.** Il met les résultats calculés en langage naturel et propose des formulations, mais il ne classe jamais une feature, ne calcule aucun KPI et ne vote pas. Toute décision qui compte est déterministe : c'est ce qui rend une session entière rejouable et défendable devant un jury.
+
+## Pourquoi un humain dans la boucle
+
+La question évidente est : pourquoi ne pas tout automatiser ? Deux raisons. D'abord, le PI Planning n'est pas seulement une optimisation, c'est un rituel de négociation et d'engagement public ; une organisation SAFe rejetterait une boîte noire qui dicte un plan. Ensuite, plus concrètement, certains arbitrages reviennent véritablement au RTE.
+
+La boucle humaine est donc **conditionnelle** : le RTE n'est interrompu que lorsque le système détecte un problème qu'il ne devrait pas trancher seul. Backlog pas prêt, cycle de dépendances, équipe poussée au-delà de **80 pour cent** de capacité, ou conflit de scénario non résolu. En deçà de ces seuils, les étapes s'enchaînent silencieusement. Quand une équipe est surchargée, le système ne se contente pas de le signaler : il classe les features les moins coûteuses à retirer via un score d'impact égal à **un divisé par WSJF multiplié par un-plus-le-nombre-de-choses-qu'elle-bloque**, de sorte que les suggestions soient des features à faible valeur qui bloquent peu. Le RTE voit, en direct, comment chaque retrait soulage chaque équipe avant de valider. Et chacun de ces points de décision est enregistré, avec ses alternatives et sa justification, dans une trace de décision, si bien que la chaîne causale d'une session entière peut être reconstituée après coup.
+
+## Des buffers là où le risque se trouve vraiment
+
+Une subtilité que la plupart des formulations RCPSP scolaires ignorent : une tâche estimée à trois jours-homme ne s'exécute presque jamais en trois jours calendaires consécutifs. Les réunions, le context-switching et les temps de blocage l'étirent. Suivant un résultat de la théorie des files d'attente (la loi de Kingman, popularisée pour le flux par Reinertsen), je modélise le temps calendaire comme le temps d'effort multiplié par un `span_factor` valant deux par défaut :
+
+```
+durée_calendaire = durée_effort × span_factor
+```
+
+Ensuite, plutôt que de gonfler chaque estimation (ce que la *Critical Chain* de Goldratt avertit être simplement gaspillé), je concentre la marge protectrice là où la variance vit réellement. Un modèle de risque déterministe note chaque tâche et insère un feeding buffer proportionnel après elle :
+
+```
+risque = 0,30·complexité + 0,20·span_factor + 0,20·prédécesseurs
+       + 0,20·skill_rare (data / mobile / devops) + 0,10·effort
+buffer_jours = round(risque × 5)      # plafonné à environ un tiers de sprint
+```
+
+L'ordonnanceur retient alors la ressource pendant ce buffer et ne démarre le successeur qu'après, si bien que le travail risqué (complexité élevée, équipe junior, compétence rare) reçoit un vrai coussin, et le RTE voit sur le Gantt exactement où se trouvent les zones tampon.
+
+## Le jeu de données, et la feuille de route
+
+Le système est exercé sur un jeu de données synthétique conçu sur mesure et généré à partir d'une seed fixe, ce qui est exactement ce qu'exige un protocole expérimental rigoureux : un ART, neuf équipes spécialisées, un PI de douze semaines composé de quatre sprints de trois semaines, et de l'ordre de cent trente-cinq stories décomposées en centaines de tâches, le tout entièrement reproductible d'un run à l'autre. La distribution des compétences est volontairement rendue déséquilibrée, avec une compétence `data` rare, pour que le goulot de capacité et le flux de retrait de feature avec humain dans la boucle soient déclenchés et démontrés à dessein plutôt que laissés au hasard. Maîtriser l'instance aussi finement est ce qui m'a permis d'isoler la contribution de chaque mécanisme.
+
+Plusieurs choix de conception sont des décisions de périmètre délibérées pour le proof of concept, et chacune correspond à une étape concrète vers un outil d'aide à la décision de production. Les durées sont traitées comme déterministes pour des expériences propres et répétables ; ajouter des estimations probabilistes est une extension naturelle. Le `span_factor` de deux est une base calibrée et appuyée par la littérature, qui pourra être ajustée par équipe et par ressource à mesure que de vraies données arrivent. Les buffers sont aujourd'hui des feeding buffers locaux, avec la consolidation en un unique project buffer à la Goldratt comme prochain incrément. Et le pipeline tourne en batch sur un seul ART, ce qui est le bon endroit pour prouver l'approche avant de passer à l'échelle. La feuille de route est claire : passer à NSGA-III pour des fronts à six objectifs encore plus nets, brancher de vrais backlogs Jira et Azure DevOps, et valider sur un Release Train industriel. À ma connaissance, la combinaison elle-même est inédite : un NSGA-II à six objectifs conscient de SAFe, un pipeline multi-agents orchestré et un modèle de risque Critical Chain, avec un humain qui garde la décision finale, le tout fonctionnant de bout en bout.
+
+Lisez le résumé complet de la recherche sur la [page recherche](/research/safescale).

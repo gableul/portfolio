@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none">
+  <!-- Marque Offload : le O s'ouvre, la charge s'envole (avec traînée) -->
+  <path d="M 53 25.4 A 30 30 0 1 0 72.6 45" stroke="#0b0b0a" stroke-width="12" fill="none" stroke-linecap="round"/>
+  <rect x="67" y="9" width="22" height="22" rx="7" fill="#2430eb"/>
+  <line x1="58" y1="14" x2="52" y2="20" stroke="#605d55" stroke-width="3.5" stroke-linecap="round"/>
+  <line x1="64" y1="36" x2="60" y2="40" stroke="#605d55" stroke-width="3.5" stroke-linecap="round"/>
+</svg>
