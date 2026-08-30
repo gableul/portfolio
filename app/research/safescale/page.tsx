@@ -10,7 +10,7 @@ const CONTRIBUTIONS: MessageKey[] = [
 ];
 
 export default function SafescalePage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
 
   return (
     <div className="wrap wrap--wide">
@@ -48,11 +48,8 @@ export default function SafescalePage() {
         <p className="card__meta">{t("r.safe.keywords")}</p>
 
         <div className="actions">
-          <a href={asset("/papers/safescale-fr.pdf")} target="_blank" rel="noopener">
-            {t("r.safe.paper.fr")}
-          </a>
-          <a href={asset("/papers/safescale-en.pdf")} target="_blank" rel="noopener">
-            {t("r.safe.paper.en")}
+          <a href={asset(`/papers/safescale-${lang}.pdf`)} target="_blank" rel="noopener">
+            {t("r.safe.paper")}
           </a>
           <a href="#" rel="noopener">GitHub</a>
         </div>
