@@ -22,7 +22,7 @@ function ageFrom(birth: string): number {
 }
 
 export default function AboutPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [age, setAge] = useState<number | null>(null);
 
   useEffect(() => setAge(ageFrom(BIRTH)), []);
@@ -53,7 +53,7 @@ export default function AboutPage() {
         </div>
         <div>
           <span className="k">{t("about.k.cv")}</span>{" "}
-          <a href={asset("/cv.pdf")} target="_blank" rel="noopener">
+          <a href={asset(lang === "fr" ? "/cv-fr.pdf" : "/cv.pdf")} target="_blank" rel="noopener">
             pdf <span className="ext">↗</span>
           </a>
         </div>
