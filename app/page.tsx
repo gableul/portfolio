@@ -11,7 +11,8 @@ const NAV: { href: string; key: MessageKey }[] = [
   { href: "/projects", key: "nav.projects" },
   { href: "/competitions", key: "nav.competitions" },
   { href: "/research", key: "nav.research" },
-  { href: "/blog", key: "nav.blog" },
+  // Blog masqué temporairement — remettre cette ligne pour le réafficher.
+  // { href: "/blog", key: "nav.blog" },
 ];
 
 export default function HomePage() {
