@@ -51,7 +51,6 @@ export default function SafescalePage() {
           <a href={asset(`/papers/safescale-${lang}.pdf`)} target="_blank" rel="noopener">
             {t("r.safe.paper")}
           </a>
-          <a href="#" rel="noopener">GitHub</a>
         </div>
       </div>
     </div>
