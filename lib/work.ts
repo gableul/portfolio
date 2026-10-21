@@ -15,6 +15,18 @@ export interface Job {
 
 export const jobs: Job[] = [
   {
+    slug: "murmell",
+    date: "Sep 2026 - Present",
+    logo: null,
+    visit: null,
+    nameKey: "work.murmell.name",
+    locKey: "work.murmell.loc",
+    roleKey: "work.murmell.role",
+    overviewKey: "work.murmell.overview",
+    bulletKeys: ["work.murmell.b1", "work.murmell.b2"],
+    tags: ["CTO", "Product", "Architecture"],
+  },
+  {
     slug: "humanx",
     date: "Jul 2024 - Present",
     logo: "assets/work/humanx",
@@ -25,7 +37,7 @@ export const jobs: Job[] = [
     overviewKey: "work.humanx.overview",
     bulletKeys: [
       "work.humanx.b1", "work.humanx.b2", "work.humanx.b3", "work.humanx.b4",
-      "work.humanx.b5", "work.humanx.b6", "work.humanx.b7", "work.humanx.b8",
+      "work.humanx.b5", "work.humanx.b6", "work.humanx.b7",
     ],
     tags: ["Product", "Full-stack", "TypeScript", "DevOps", "Security", "Automation", "Brand", "Investors"],
   },
