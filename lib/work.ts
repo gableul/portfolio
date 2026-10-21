@@ -25,27 +25,13 @@ export const jobs: Job[] = [
     overviewKey: "work.humanx.overview",
     bulletKeys: [
       "work.humanx.b1", "work.humanx.b2", "work.humanx.b3", "work.humanx.b4",
-      "work.humanx.b5", "work.humanx.b6", "work.humanx.b7",
+      "work.humanx.b5", "work.humanx.b6", "work.humanx.b7", "work.humanx.b8",
     ],
     tags: ["Product", "Full-stack", "TypeScript", "DevOps", "Security", "Automation", "Brand", "Investors"],
   },
   {
-    slug: "thales-ai",
-    date: "Mar 2026 - Present",
-    logo: "assets/work/thales",
-    visit: null,
-    nameKey: "work.thales.name",
-    locKey: "work.thales.loc",
-    roleKey: "work.thalesai.role",
-    overviewKey: "work.thalesai.overview",
-    bulletKeys: [
-      "work.thalesai.b1", "work.thalesai.b2", "work.thalesai.b3", "work.thalesai.b4",
-    ],
-    tags: ["AI", "Research", "NSGA-II", "Multi-agent", "Optimization", "Python", "SAFe"],
-  },
-  {
     slug: "thales",
-    date: "Sep 2023 - Mar 2026",
+    date: "Sep 2023 - 2026",
     logo: "assets/work/thales",
     visit: null,
     nameKey: "work.thales.name",
@@ -54,9 +40,9 @@ export const jobs: Job[] = [
     overviewKey: "work.thales.overview",
     bulletKeys: [
       "work.thales.b1", "work.thales.b2", "work.thales.b3", "work.thales.b4",
-      "work.thales.b5", "work.thales.b6", "work.thales.b7",
+      "work.thales.b5", "work.thales.b6", "work.thales.b7", "work.thales.b8",
     ],
-    tags: ["Data", "SQL", "Power BI", "DAX", "Power Query", "Automation", "Jira", "Confluence", "Artifactory", "SAFe", "Kanban", "Mentoring"],
+    tags: ["Data", "SQL", "Power BI", "DAX", "Power Query", "Automation", "Jira", "Confluence", "Artifactory", "SAFe", "Kanban", "Mentoring", "AI", "Research", "NSGA-II", "Multi-agent", "Optimization", "Python"],
   },
 ];
 
