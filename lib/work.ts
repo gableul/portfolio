@@ -15,6 +15,18 @@ export interface Job {
 
 export const jobs: Job[] = [
   {
+    slug: "murmell",
+    date: "Sep 2026 - Present",
+    logo: null,
+    visit: null,
+    nameKey: "work.murmell.name",
+    locKey: "work.murmell.loc",
+    roleKey: "work.murmell.role",
+    overviewKey: "work.murmell.overview",
+    bulletKeys: ["work.murmell.b1", "work.murmell.b2"],
+    tags: ["CTO", "Product", "Architecture"],
+  },
+  {
     slug: "humanx",
     date: "Jul 2024 - Present",
     logo: "assets/work/humanx",
@@ -30,22 +42,8 @@ export const jobs: Job[] = [
     tags: ["Product", "Full-stack", "TypeScript", "DevOps", "Security", "Automation", "Brand", "Investors"],
   },
   {
-    slug: "thales-ai",
-    date: "Mar 2026 - Present",
-    logo: "assets/work/thales",
-    visit: null,
-    nameKey: "work.thales.name",
-    locKey: "work.thales.loc",
-    roleKey: "work.thalesai.role",
-    overviewKey: "work.thalesai.overview",
-    bulletKeys: [
-      "work.thalesai.b1", "work.thalesai.b2", "work.thalesai.b3", "work.thalesai.b4",
-    ],
-    tags: ["AI", "Research", "NSGA-II", "Multi-agent", "Optimization", "Python", "SAFe"],
-  },
-  {
     slug: "thales",
-    date: "Sep 2023 - Mar 2026",
+    date: "Sep 2023 - Sep 2026",
     logo: "assets/work/thales",
     visit: null,
     nameKey: "work.thales.name",
@@ -54,9 +52,9 @@ export const jobs: Job[] = [
     overviewKey: "work.thales.overview",
     bulletKeys: [
       "work.thales.b1", "work.thales.b2", "work.thales.b3", "work.thales.b4",
-      "work.thales.b5", "work.thales.b6", "work.thales.b7",
+      "work.thales.b5", "work.thales.b6", "work.thales.b7", "work.thales.b8",
     ],
-    tags: ["Data", "SQL", "Power BI", "DAX", "Power Query", "Automation", "Jira", "Confluence", "Artifactory", "SAFe", "Kanban", "Mentoring"],
+    tags: ["Data", "SQL", "Power BI", "DAX", "Power Query", "Automation", "Jira", "Confluence", "Artifactory", "SAFe", "Kanban", "Mentoring", "AI", "Research", "NSGA-II", "Multi-agent", "Optimization", "Python"],
   },
 ];
 
