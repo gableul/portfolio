@@ -31,7 +31,7 @@ export const jobs: Job[] = [
   },
   {
     slug: "thales",
-    date: "Sep 2023 - 2026",
+    date: "Sep 2023 - Sep 2026",
     logo: "assets/work/thales",
     visit: null,
     nameKey: "work.thales.name",
